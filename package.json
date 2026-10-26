@@ -1,0 +1,12 @@
+{
+  "name": "mallowtick",
+  "private": true,
+  "packageManager": "pnpm@12.14.0",
+  "scripts": {
+    "dev": "pnpm --filter @mallowtick/web dev",
+    "build": "pnpm --filter @mallowtick/web build",
+    "lint": "pnpm --filter @mallowtick/web lint",
+    "typecheck": "pnpm --filter @mallowtick/web typecheck",
+    "test": "pnpm --filter @mallowtick/web test"
+  }
+}
