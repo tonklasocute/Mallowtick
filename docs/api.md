@@ -71,10 +71,10 @@ NYSE open/closed state from the provider.
 
 ### `GET /market/overview`
 
-Quotes for `MARKET_OVERVIEW_SYMBOLS` (`benchmarks`) and `POPULAR_SYMBOLS` (`popular`), fetched in one batch. Lists are empty when not configured.
+Quotes for `MARKET_OVERVIEW_SYMBOLS` (`benchmarks`) and `POPULAR_SYMBOLS` (`popular`), fetched in one de-duplicated batch, in configured order. Lists are empty when not configured. Each `unavailable` entry has a `group` (`benchmark` or `popular`), so clients can show it in place.
 
 ```json
-{ "data": { "benchmarks": [Quote…], "popular": [Quote…], "unavailable": [{ "symbol": "DIA", "reason": "rate_limited" }] } }
+{ "data": { "benchmarks": [Quote…], "popular": [Quote…], "unavailable": [{ "symbol": "DIA", "reason": "rate_limited", "group": "benchmark" }] } }
 ```
 
 ### `GET /stocks/search?q=apple`
