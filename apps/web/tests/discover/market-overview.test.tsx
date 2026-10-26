@@ -1,0 +1,101 @@
+import { screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { MarketOverview } from "@/features/discover/market-overview";
+import type { MarketOverview as Overview } from "@/types/api";
+
+import { apiError, ok, quote } from "../fixtures";
+import { renderWithProviders } from "../render";
+
+afterEach(() => vi.unstubAllGlobals());
+
+function mockOverview(response: () => Response) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname === "/api/v1/market/overview") return response();
+      return apiError(429, "rate_limited"); // sparklines unavailable: none may be drawn
+    }),
+  );
+}
+
+const overview: Overview = {
+  benchmarks: [
+    quote({ symbol: "SPY", name: "SPDR S&P 500 ETF Trust", price: 759.97 }),
+    quote({
+      symbol: "QQQ",
+      name: "Invesco QQQ Trust",
+      price: 704.4,
+      change: -0.07,
+      changePercent: -0.01,
+    }),
+  ],
+  popular: [quote({ symbol: "AAPL" })],
+  unavailable: [
+    { symbol: "DIA", reason: "rate_limited", group: "benchmark" },
+    { symbol: "TSLA", reason: "not_found", group: "popular" },
+  ],
+};
+
+describe("MarketOverview", () => {
+  it("shows a loading skeleton first", () => {
+    mockOverview(() => ok(overview));
+    renderWithProviders(<MarketOverview />);
+    expect(screen.getByLabelText("Loading market overview")).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("renders benchmarks and popular stocks from the API", async () => {
+    mockOverview(() => ok(overview));
+    renderWithProviders(<MarketOverview />);
+
+    const benchmarks = await screen.findByRole("region", { name: "Market benchmarks" });
+    expect(within(benchmarks).getByText("$759.97")).toBeInTheDocument();
+    expect(within(benchmarks).getByRole("link", { name: /QQQ/ })).toHaveAttribute(
+      "href",
+      "/stocks/QQQ",
+    );
+    expect(within(benchmarks).getByText("-0.01%", { exact: false })).toBeInTheDocument();
+
+    const popular = screen.getByRole("region", { name: "Popular stocks" });
+    expect(within(popular).getByRole("link", { name: /AAPL.*Apple Inc\./ })).toBeInTheDocument();
+    expect(document.querySelector("polyline")).toBeNull();
+  });
+
+  it("shows unavailable symbols in place without a price", async () => {
+    mockOverview(() => ok(overview));
+    renderWithProviders(<MarketOverview />);
+
+    const benchmarks = await screen.findByRole("region", { name: "Market benchmarks" });
+    const dia = within(benchmarks).getByText("DIA").closest("section")!;
+    expect(within(dia).getByText("Unavailable")).toBeInTheDocument();
+    expect(within(dia).getByText("Rate limit reached")).toBeInTheDocument();
+    expect(within(dia).queryByText(/\$/)).toBeNull();
+
+    const tsla = within(screen.getByRole("region", { name: "Popular stocks" }))
+      .getByRole("link", { name: /^TSLA/ })
+      .closest("li")!;
+    expect(within(tsla).getByText("Symbol not found")).toBeInTheDocument();
+    expect(within(tsla).queryByText(/\$/)).toBeNull();
+  });
+
+  it("explains a missing provider instead of showing prices", async () => {
+    mockOverview(() => apiError(503, "provider_not_configured"));
+    renderWithProviders(<MarketOverview />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Data provider not configured");
+    expect(screen.queryByText(/\$\d/)).toBeNull();
+  });
+
+  it("offers a retry for transient failures", async () => {
+    mockOverview(() => apiError(502, "provider_unavailable"));
+    renderWithProviders(<MarketOverview />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Market data unavailable");
+    expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+  });
+
+  it("shows an empty state when nothing is configured", async () => {
+    mockOverview(() => ok({ benchmarks: [], popular: [], unavailable: [] }));
+    renderWithProviders(<MarketOverview />);
+    expect(await screen.findByText("Search to get started")).toBeInTheDocument();
+  });
+});

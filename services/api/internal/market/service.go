@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -94,7 +95,15 @@ type QuoteResult struct {
 type UnavailableSymbol struct {
 	Symbol Symbol `json:"symbol"`
 	Reason string `json:"reason"`
+	// Group is set in overview responses: "benchmark" or "popular".
+	Group string `json:"group,omitempty"`
 }
+
+// Overview groups for UnavailableSymbol.Group.
+const (
+	GroupBenchmark = "benchmark"
+	GroupPopular   = "popular"
+)
 
 // QuoteBatch is the result of a multi-symbol quote lookup, in request order.
 type QuoteBatch struct {
@@ -343,10 +352,15 @@ func firstProviderError(symbols []Symbol, errs map[Symbol]error) error {
 // Overview returns quotes for the configured benchmark and popular symbols in
 // a single provider request.
 func (s *Service) Overview(ctx context.Context) (Overview, error) {
-	all := make([]Symbol, 0, len(s.cfg.OverviewSymbols)+len(s.cfg.PopularSymbols))
-	all = append(all, s.cfg.OverviewSymbols...)
-	all = append(all, s.cfg.PopularSymbols...)
 	ov := Overview{Benchmarks: []QuoteResult{}, Popular: []QuoteResult{}, Unavailable: []UnavailableSymbol{}}
+	all := make([]Symbol, 0, len(s.cfg.OverviewSymbols)+len(s.cfg.PopularSymbols))
+	seen := make(map[Symbol]bool)
+	for _, sym := range append(slices.Clone(s.cfg.OverviewSymbols), s.cfg.PopularSymbols...) {
+		if !seen[sym] {
+			seen[sym] = true
+			all = append(all, sym)
+		}
+	}
 	if len(all) == 0 {
 		return ov, nil
 	}
@@ -358,17 +372,23 @@ func (s *Service) Overview(ctx context.Context) (Overview, error) {
 	for _, q := range batch.Quotes {
 		bySymbol[q.Symbol] = q
 	}
-	for _, sym := range s.cfg.OverviewSymbols {
-		if q, ok := bySymbol[string(sym)]; ok {
-			ov.Benchmarks = append(ov.Benchmarks, q)
+	reasons := make(map[Symbol]string, len(batch.Unavailable))
+	for _, u := range batch.Unavailable {
+		reasons[u.Symbol] = u.Reason
+	}
+	// Keep each list in configured order and say which section a missing
+	// symbol belongs to, so clients can show it in place.
+	collect := func(symbols []Symbol, group string, dst *[]QuoteResult) {
+		for _, sym := range symbols {
+			if q, ok := bySymbol[string(sym)]; ok {
+				*dst = append(*dst, q)
+			} else if reason, ok := reasons[sym]; ok {
+				ov.Unavailable = append(ov.Unavailable, UnavailableSymbol{Symbol: sym, Reason: reason, Group: group})
+			}
 		}
 	}
-	for _, sym := range s.cfg.PopularSymbols {
-		if q, ok := bySymbol[string(sym)]; ok {
-			ov.Popular = append(ov.Popular, q)
-		}
-	}
-	ov.Unavailable = batch.Unavailable
+	collect(s.cfg.OverviewSymbols, GroupBenchmark, &ov.Benchmarks)
+	collect(s.cfg.PopularSymbols, GroupPopular, &ov.Popular)
 	return ov, nil
 }
 

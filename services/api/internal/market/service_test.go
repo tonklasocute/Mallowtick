@@ -235,8 +235,9 @@ func TestOverviewSplitsConfiguredLists(t *testing.T) {
 	if len(ov.Benchmarks) != 1 || ov.Benchmarks[0].Symbol != "SPY" || len(ov.Popular) != 1 || ov.Popular[0].Symbol != "AAPL" {
 		t.Fatalf("unexpected overview %+v", ov)
 	}
-	if len(ov.Unavailable) != 1 || ov.Unavailable[0].Symbol != "QQQ" {
-		t.Fatalf("QQQ should be reported unavailable: %+v", ov.Unavailable)
+	want := UnavailableSymbol{Symbol: "QQQ", Reason: "not_found", Group: GroupBenchmark}
+	if len(ov.Unavailable) != 1 || ov.Unavailable[0] != want {
+		t.Fatalf("QQQ should be reported as an unavailable benchmark: %+v", ov.Unavailable)
 	}
 	if p.quoteCalls.Load() != 1 {
 		t.Fatalf("overview should use one batch request; calls = %d", p.quoteCalls.Load())
@@ -286,5 +287,28 @@ func TestErrorCode(t *testing.T) {
 		if got := ErrorCode(err); got != want {
 			t.Errorf("ErrorCode(%v) = %q, want %q", err, got, want)
 		}
+	}
+}
+
+func TestOverviewDeduplicatesSymbolsAcrossGroups(t *testing.T) {
+	p := &fakeProvider{quotes: map[Symbol]Quote{"AAPL": quote("AAPL", 1, true)}}
+	s := NewService(p, ServiceConfig{
+		QuoteTTL: time.Minute, StaleRetention: time.Hour, ProviderTimeout: time.Second,
+		OverviewSymbols: []Symbol{"AAPL", "ZZZZ"}, PopularSymbols: []Symbol{"AAPL", "ZZZZ"},
+		Levels: supportresistance.DefaultConfig(), Now: (&testClock{t: time.Unix(0, 0)}).now,
+	})
+	ov, err := s.Overview(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ov.Benchmarks) != 1 || len(ov.Popular) != 1 {
+		t.Fatalf("AAPL should appear in both sections: %+v", ov)
+	}
+	groups := []string{}
+	for _, u := range ov.Unavailable {
+		groups = append(groups, u.Group)
+	}
+	if len(groups) != 2 || groups[0] != GroupBenchmark || groups[1] != GroupPopular {
+		t.Fatalf("ZZZZ should be reported once per section, got %+v", ov.Unavailable)
 	}
 }

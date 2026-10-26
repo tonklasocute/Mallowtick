@@ -5,15 +5,19 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { Sparkline } from "@/components/charts/sparkline";
+import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
-import { ApiErrorState, errorCopy } from "@/components/market/api-error-state";
+import { ApiErrorState } from "@/components/market/api-error-state";
 import { QuoteRow } from "@/components/stocks/quote-row";
 import { SymbolAvatar } from "@/components/stocks/symbol-avatar";
+import { UnavailableQuoteRow } from "@/components/stocks/unavailable-quote-row";
 import { IconButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StateMessage } from "@/components/ui/state-message";
 import { direction } from "@/lib/format";
+import { unavailableReasonLabel } from "@/lib/unavailable-reason";
+import { isApiError } from "@/services/api/client";
 import { useQuotes, useSparkline } from "@/services/api/queries";
 import type { Quote } from "@/types/api";
 
@@ -31,23 +35,6 @@ function RowSparkline({ quote }: { quote: Quote }) {
   );
 }
 
-function UnavailableRow({ symbol, reason }: { symbol: string; reason: string }) {
-  return (
-    <div className="flex min-w-0 flex-1 items-center gap-3 px-1 py-2.5">
-      <SymbolAvatar symbol={symbol} />
-      <span className="min-w-0 flex-1">
-        <Link
-          href={`/stocks/${encodeURIComponent(symbol)}`}
-          className="block font-display font-semibold text-ink"
-        >
-          {symbol}
-        </Link>
-        <span className="block text-xs text-slate">Price unavailable · {reason}</span>
-      </span>
-    </div>
-  );
-}
-
 export function WatchlistScreen() {
   const wl = useWatchlist();
   const repo = useWatchlistRepository();
@@ -55,13 +42,11 @@ export function WatchlistScreen() {
   const quotes = useQuotes(wl.symbols);
 
   const bySymbol = new Map(quotes.data?.quotes.map((q) => [q.symbol, q]));
-  const reasons = new Map(
-    quotes.data?.unavailable.map((u) => [u.symbol, u.reason.replaceAll("_", " ")]),
-  );
+  const reasons = new Map(quotes.data?.unavailable.map((u) => [u.symbol, u.reason]));
   const hasSymbols = wl.symbols.length > 0;
 
   return (
-    <>
+    <PageContainer>
       <PageHeader
         title="Watchlist"
         trailing={
@@ -157,14 +142,15 @@ export function WatchlistScreen() {
                       </li>
                     );
                   }
-                  const reason =
-                    reasons.get(symbol) ??
-                    (quotes.error ? errorCopy(quotes.error).title.toLowerCase() : "not returned");
+                  const code =
+                    reasons.get(symbol) ?? (isApiError(quotes.error) ? quotes.error.code : "");
                   return (
-                    <li key={symbol} className="flex items-center">
-                      <UnavailableRow symbol={symbol} reason={reason} />
-                      {remove}
-                    </li>
+                    <UnavailableQuoteRow
+                      key={symbol}
+                      symbol={symbol}
+                      reason={unavailableReasonLabel(code)}
+                      trailing={remove}
+                    />
                   );
                 })}
               </ul>
@@ -173,6 +159,6 @@ export function WatchlistScreen() {
         )}
         <p className="px-1 text-[11px] text-slate">{repo.storageDescription}</p>
       </main>
-    </>
+    </PageContainer>
   );
 }

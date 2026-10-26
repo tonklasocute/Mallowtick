@@ -69,7 +69,10 @@ describe("WatchlistScreen", () => {
     const row = (await screen.findByText("Apple Inc.")).closest("li")!;
     expect(within(row).getByText("$189.32")).toBeInTheDocument();
     expect(within(row).getByText("+0.99%")).toBeInTheDocument();
-    expect(screen.getByText(/Price unavailable · not found/)).toBeInTheDocument();
+    const missing = screen.getByRole("link", { name: /^ZZZZ/ }).closest("li")!;
+    expect(within(missing).getByText("Price unavailable")).toBeInTheDocument();
+    expect(within(missing).getByText("Symbol not found")).toBeInTheDocument();
+    expect(within(missing).queryByText(/\$/)).toBeNull();
     expect(row.querySelector("polyline")).toBeNull(); // no fabricated sparkline without candles
 
     await userEvent.click(screen.getByRole("button", { name: "Edit watchlist" }));

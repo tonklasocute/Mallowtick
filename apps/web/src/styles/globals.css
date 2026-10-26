@@ -52,6 +52,7 @@
   :root {
     color-scheme: light;
     --nav-height: 4rem;
+    --sidebar-width: 15rem;
   }
 
   html {
@@ -85,8 +86,12 @@
   padding-top: env(safe-area-inset-top);
 }
 
+/* Clears the mobile bottom nav; large screens use the sidebar instead. */
 @utility pb-nav {
   padding-bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + 1rem);
+  @media (width >= 64rem) {
+    padding-bottom: 2.5rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
