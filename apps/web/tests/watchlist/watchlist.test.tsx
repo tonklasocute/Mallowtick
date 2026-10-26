@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -90,6 +90,31 @@ describe("WatchlistScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: "แก้ไขรายการ" }));
     await userEvent.click(screen.getByRole("button", { name: "ลบ ZZZZ" }));
     await waitFor(async () => expect(await repository.list()).toEqual(["AAPL"]));
+  });
+
+  it("requests a row's sparkline only once the row is on screen", async () => {
+    let reveal: () => void = () => {};
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(cb: IntersectionObserverCallback) {
+          reveal = () => cb([{ isIntersecting: true } as IntersectionObserverEntry], this as never);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    mockQuotes(() => ok({ quotes: [quote({ symbol: "AAPL" })], unavailable: [] }));
+    const candleCalls = () =>
+      vi.mocked(fetch).mock.calls.filter(([u]) => String(u).includes("/candles")).length;
+    renderWithProviders(<WatchlistScreen />, {
+      repository: new MemoryWatchlistRepository(["AAPL"]),
+    });
+
+    await screen.findByText("Apple Inc.");
+    expect(candleCalls()).toBe(0);
+    act(() => reveal());
+    await waitFor(() => expect(candleCalls()).toBe(1));
   });
 
   it("shows the API error when no quotes can be loaded", async () => {
