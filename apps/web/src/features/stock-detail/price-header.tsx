@@ -8,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatPrice } from "@/lib/format";
 import type { useQuote } from "@/services/api/queries";
 
+import { EarningsBadge } from "./earnings-badge";
+
 export function PriceHeader({
   symbol,
   query,
@@ -39,7 +41,7 @@ export function PriceHeader({
             {quote.name || symbol}
           </h1>
           <p className="text-xs text-slate">
-            {symbol} · {quote.exchange} · {quote.currency}
+            {[symbol, quote.exchange, quote.currency].filter(Boolean).join(" · ")}
           </p>
         </div>
       </div>
@@ -53,11 +55,14 @@ export function PriceHeader({
           className="text-base"
         />
       </div>
-      <FreshnessBadge
-        freshness={quote.freshness}
-        isMarketOpen={quote.isMarketOpen}
-        receivedAt={dataUpdatedAt}
-      />
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <FreshnessBadge
+          freshness={quote.freshness}
+          isMarketOpen={quote.isMarketOpen}
+          receivedAt={dataUpdatedAt}
+        />
+        <EarningsBadge symbol={symbol} />
+      </div>
     </section>
   );
 }

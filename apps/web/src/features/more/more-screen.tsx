@@ -13,8 +13,9 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStorageDescription } from "@/features/watchlist/use-watchlist";
 import { BRAND } from "@/lib/brand";
+import { vendorLabel } from "@/lib/providers";
 import { useHealth } from "@/services/api/queries";
-import type { Latency } from "@/types/api";
+import type { DataKind, Latency } from "@/types/api";
 
 const LATENCY_COPY: Record<Latency, string> = {
   realtime: "เรียลไทม์ (ตามที่ระบุไว้สำหรับแพ็กเกจที่ตั้งค่า)",
@@ -59,19 +60,52 @@ function Section({
   );
 }
 
+/** Rows of the data-source list, in display order. */
+const SOURCE_ROWS: [DataKind, string][] = [
+  ["quotes", "ราคาล่าสุด"],
+  ["search", "ค้นหาหุ้น"],
+  ["candles", "กราฟแท่งเทียน"],
+  ["status", "สถานะตลาด"],
+  ["earnings", "วันประกาศงบ"],
+];
+
+/** "ข้อมูลตลาดโดย Finnhub และ Twelve Data" from the vendors actually in use. */
+function DataCredit() {
+  const { data } = useHealth();
+  const names = [
+    ...new Set(Object.values(data?.provider.sources ?? {}).map((s) => vendorLabel(s.name))),
+  ];
+  if (names.length === 0) return null;
+  return <>ข้อมูลตลาดโดย {names.join(" และ ")}</>;
+}
+
 function ProviderStatus() {
   const { data, error, isPending } = useHealth();
   if (isPending) return <Skeleton className="h-10 w-full" />;
   if (!data) return <p>{errorCopy(error).title}</p>;
   const { provider } = data;
+  const sources = SOURCE_ROWS.flatMap(([kind, label]) => {
+    const s = provider.sources?.[kind];
+    return s ? [{ kind, label, ...s }] : [];
+  });
   return (
     <dl className="space-y-1.5">
-      <div className="flex justify-between gap-3">
-        <dt>ผู้ให้บริการ</dt>
-        <dd className="font-semibold text-ink">
-          {provider.name === "twelvedata" ? "Twelve Data" : provider.name}
-        </dd>
-      </div>
+      {sources.length > 0 ? (
+        sources.map((s) => (
+          <div key={s.kind} className="flex justify-between gap-3">
+            <dt>{s.label}</dt>
+            <dd className="inline-flex items-center gap-1.5 font-semibold text-ink">
+              {vendorLabel(s.name)}
+              {!s.configured && <Badge tone="accent">ยังไม่ได้ตั้งค่า</Badge>}
+            </dd>
+          </div>
+        ))
+      ) : (
+        <div className="flex justify-between gap-3">
+          <dt>ผู้ให้บริการ</dt>
+          <dd className="font-semibold text-ink">{vendorLabel(provider.name)}</dd>
+        </div>
+      )}
       <div className="flex justify-between gap-3">
         <dt>สถานะ</dt>
         <dd>
@@ -134,8 +168,7 @@ export function MoreScreen() {
           </div>
           <p className="text-xs text-slate">
             ใช้เป็นข้อมูลประกอบเท่านั้น ไม่ใช่คำแนะนำการลงทุน
-            แนวรับและแนวต้านเป็นค่าประมาณจากการคำนวณ และไม่ได้คาดการณ์ราคาในอนาคต ข้อมูลตลาดโดย
-            Twelve Data
+            แนวรับและแนวต้านเป็นค่าประมาณจากการคำนวณ และไม่ได้คาดการณ์ราคาในอนาคต <DataCredit />
           </p>
           {/* Attribution notice required by the Lightweight Charts licence (the chart shows no logo). */}
           <p className="text-xs text-slate">
