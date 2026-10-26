@@ -46,6 +46,8 @@ Design choices:
 | `src/styles/globals.css` | Design tokens (`@theme`) — the only place colors are defined. |
 | `src/types/api.ts` | TypeScript mirror of the API responses. |
 
+Layout: phones and tablets use the bottom nav. Large screens (≥1024px) use a fixed sidebar (`SideNav`); both read `components/layout/nav-items.ts`. Screens wrap their content in `PageContainer`, which is `narrow` for single-column screens and `wide` for Discover. Discover switches to a two-column layout (benchmarks | popular stocks) on desktop. Response shaping for Discover lives in `features/discover/overview-model.ts`, not in components.
+
 Data flow rules:
 
 - Components never call `fetch`. They use hooks from `services/api/queries.ts`.

@@ -36,6 +36,8 @@ export interface Quote {
 export interface UnavailableSymbol {
   symbol: string;
   reason: ApiErrorCode;
+  /** Overview section the symbol belongs to (overview responses only). */
+  group?: "benchmark" | "popular";
 }
 
 export interface QuoteBatch {

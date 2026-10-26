@@ -3,11 +3,11 @@
 import { useState } from "react";
 
 import { Logo } from "@/components/brand/logo";
+import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
-import { MarketStatusPill } from "@/components/market/market-status-pill";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
-import { BRAND } from "@/lib/brand";
 
+import { DiscoverHero } from "./discover-hero";
 import { MarketOverview } from "./market-overview";
 import { SearchBox } from "./search-box";
 import { SearchResults } from "./search-results";
@@ -18,20 +18,38 @@ export function DiscoverScreen() {
   const debounced = useDebouncedValue(trimmed, 300);
 
   return (
-    <>
-      <PageHeader title={<Logo />} />
-      <main className="pb-nav space-y-4 px-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="font-display text-sm text-slate-strong">{BRAND.tagline}</p>
-          <MarketStatusPill />
+    <PageContainer width="wide">
+      <PageHeader
+        title={
+          <>
+            {/* The sidebar carries the logo on large screens. */}
+            <span className="lg:hidden">
+              <Logo />
+            </span>
+            <h1 className="sr-only font-display text-2xl font-bold text-ink lg:not-sr-only">
+              Discover
+            </h1>
+          </>
+        }
+      />
+      <main className="pb-nav space-y-4 px-4 lg:space-y-6">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-center lg:gap-6">
+          <DiscoverHero />
+          <div className="space-y-2">
+            <SearchBox value={query} onChange={setQuery} />
+            <p className="hidden px-1 text-xs text-slate lg:block">
+              Try a ticker like AAPL or BRK.B, or a company name like “Microsoft”.
+            </p>
+          </div>
         </div>
-        <SearchBox value={query} onChange={setQuery} />
         {trimmed ? (
-          <SearchResults query={debounced} pending={debounced !== trimmed} />
+          <div className="lg:max-w-2xl">
+            <SearchResults query={debounced} pending={debounced !== trimmed} />
+          </div>
         ) : (
           <MarketOverview />
         )}
       </main>
-    </>
+    </PageContainer>
   );
 }
