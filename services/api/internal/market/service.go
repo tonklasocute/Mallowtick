@@ -42,6 +42,8 @@ const (
 	statusMaxTTL = 6 * time.Hour
 	statusKey    = "status"
 	searchLimit  = 10
+	// Earnings dates rarely move; a day is plenty of notice either way.
+	earningsTTL = 12 * time.Hour
 )
 
 // Service is the application layer between transports and a Provider.
@@ -56,6 +58,7 @@ type Service struct {
 	searches    *cache.TTL[[]Instrument]
 	instruments *cache.TTL[Instrument]
 	status      *cache.TTL[MarketStatus]
+	earnings    *cache.TTL[*EarningsEvent]
 }
 
 // NewService wires a provider with caches.
@@ -76,18 +79,46 @@ func NewService(p Provider, cfg ServiceConfig) *Service {
 		searches:    cache.New[[]Instrument](searchTTL, retain, 1000, cfg.Now),
 		instruments: cache.New[Instrument](instrumentTTL, instrumentTTL, 2000, cfg.Now),
 		status:      cache.New[MarketStatus](statusTTL, retain, 1, cfg.Now),
+		earnings:    cache.New[*EarningsEvent](earningsTTL, retain, 1000, cfg.Now),
 	}
 }
 
-// ProviderInfo describes the configured provider.
+// source is the vendor behind a kind of data.
+func (s *Service) source(kind DataKind) Provider {
+	if m, ok := s.provider.(MultiSource); ok {
+		return m.SourceFor(kind)
+	}
+	return s.provider
+}
+
+// SourceInfo names the vendor behind one kind of data.
+type SourceInfo struct {
+	Name       string `json:"name"`
+	Configured bool   `json:"configured"`
+}
+
+// ProviderInfo describes the configured provider and, per kind of data, the
+// vendor that supplies it.
 type ProviderInfo struct {
-	Name       string  `json:"name"`
-	Configured bool    `json:"configured"`
-	Latency    Latency `json:"latency"`
+	Name       string                  `json:"name"`
+	Configured bool                    `json:"configured"`
+	Latency    Latency                 `json:"latency"`
+	Sources    map[DataKind]SourceInfo `json:"sources"`
 }
 
 func (s *Service) ProviderInfo() ProviderInfo {
-	return ProviderInfo{Name: s.provider.Name(), Configured: s.provider.Configured(), Latency: s.cfg.Latency}
+	info := ProviderInfo{
+		Name: s.provider.Name(), Configured: s.provider.Configured(), Latency: s.cfg.Latency,
+		Sources: make(map[DataKind]SourceInfo, len(DataKinds)),
+	}
+	for _, kind := range DataKinds {
+		p := s.source(kind)
+		if _, ok := p.(EarningsProvider); kind == KindEarnings && !ok {
+			continue // no vendor publishes an earnings calendar in this deployment
+		}
+		info.Sources[kind] = SourceInfo{Name: p.Name(), Configured: p.Configured()}
+	}
+	return info
 }
 
 // QuoteResult is a quote plus its freshness metadata.
@@ -160,8 +191,8 @@ type StatusResult struct {
 
 const levelsDisclaimer = "แนวรับ-แนวต้านคำนวณโดย Mallowtick จากแท่งเทียนย้อนหลัง เป็นค่าประมาณเชิงวิเคราะห์ ไม่ใช่ข้อมูลจากผู้ให้บริการ และไม่ได้คาดการณ์ราคาในอนาคต"
 
-func (s *Service) freshness(asOf *time.Time, fetchedAt time.Time, stale bool) Freshness {
-	return Freshness{Provider: s.provider.Name(), Latency: s.cfg.Latency, AsOf: asOf, FetchedAt: fetchedAt.UTC(), Stale: stale}
+func (s *Service) freshness(kind DataKind, asOf *time.Time, fetchedAt time.Time, stale bool) Freshness {
+	return Freshness{Provider: s.source(kind).Name(), Latency: s.cfg.Latency, AsOf: asOf, FetchedAt: fetchedAt.UTC(), Stale: stale}
 }
 
 // do runs fn once per key across concurrent callers. The provider call is
@@ -309,7 +340,7 @@ func (s *Service) resolveQuotes(ctx context.Context, symbols []Symbol) ([]QuoteR
 		e, st := s.quotes.Get(string(sym))
 		switch st {
 		case cache.Fresh:
-			results[sym] = QuoteResult{Quote: e.Value, Freshness: s.freshness(e.Value.AsOf, e.StoredAt, false)}
+			results[sym] = QuoteResult{Quote: e.Value, Freshness: s.freshness(KindQuotes, e.Value.AsOf, e.StoredAt, false)}
 			continue
 		case cache.Stale:
 			staleEntries[sym] = e
@@ -330,6 +361,11 @@ func (s *Service) resolveQuotes(ctx context.Context, symbols []Symbol) ([]QuoteR
 			}
 			f := quoteFetch{stored: make(map[Symbol]cache.Entry[Quote], len(got)), missingErr: err}
 			for sym, q := range got {
+				if q.IsMarketOpen == nil {
+					// Some vendors' quotes omit market state; take it from the status
+					// already cached (never fetched for this) so labels and TTLs know.
+					q.IsMarketOpen = s.cachedMarketOpen()
+				}
 				f.stored[sym] = s.quotes.SetWithTTL(string(sym), q, s.quoteTTL(q))
 			}
 			return f, nil
@@ -340,13 +376,13 @@ func (s *Service) resolveQuotes(ctx context.Context, symbols []Symbol) ([]QuoteR
 		}
 		for _, sym := range misses {
 			if e, ok := fetched.stored[sym]; ok {
-				results[sym] = QuoteResult{Quote: e.Value, Freshness: s.freshness(e.Value.AsOf, e.StoredAt, false)}
+				results[sym] = QuoteResult{Quote: e.Value, Freshness: s.freshness(KindQuotes, e.Value.AsOf, e.StoredAt, false)}
 				continue
 			}
 			err := cmp.Or(fetchErr, fetched.missingErr, ErrNotFound)
 			if e, ok := staleEntries[sym]; ok && canFallBack(err) {
 				s.log.WarnContext(ctx, "serving stale quote", slog.String("symbol", string(sym)), slog.Any("error", err))
-				results[sym] = QuoteResult{Quote: e.Value, Freshness: s.freshness(e.Value.AsOf, e.StoredAt, true)}
+				results[sym] = QuoteResult{Quote: e.Value, Freshness: s.freshness(KindQuotes, e.Value.AsOf, e.StoredAt, true)}
 				continue
 			}
 			errs[sym] = err
@@ -368,7 +404,94 @@ func (s *Service) Quote(ctx context.Context, symbol Symbol) (QuoteResult, error)
 	if err := errs[symbol]; err != nil {
 		return QuoteResult{}, err
 	}
-	return got[0], nil
+	q := got[0]
+	if q.Volume == nil {
+		q.Volume = s.sessionVolume(symbol, q.AsOf)
+	}
+	if q.FiftyTwoWeek == nil {
+		if rp, ok := s.source(KindQuotes).(RangeProvider); ok {
+			// Optional extra: a failure leaves the range unknown, not the quote.
+			if r, err := rp.FiftyTwoWeek(ctx, symbol); err == nil {
+				q.FiftyTwoWeek = r
+			}
+		}
+	}
+	return q, nil
+}
+
+// cachedMarketOpen is the market state from the cached status, or nil when
+// none is cached. It never calls the provider.
+func (s *Service) cachedMarketOpen() *bool {
+	e, state := s.status.Get(statusKey)
+	if state != cache.Fresh {
+		return nil
+	}
+	open := e.Value.IsOpen
+	return &open
+}
+
+// sessionVolume fills in the session's volume for vendors whose quotes lack
+// it, from the session's daily bar already cached for the chart, once the
+// market has closed and the bar is final. It never fetches. Intraday bars are
+// not summed: on Twelve Data's free plan their volumes cover only part of the
+// market (AAPL's first 5-minute bar showed ~50k shares), so the total would be
+// far too low. During the session the volume therefore stays unknown.
+func (s *Service) sessionVolume(symbol Symbol, asOf *time.Time) *int64 {
+	if asOf == nil {
+		return nil
+	}
+	if _, closed := s.closedFor(); !closed {
+		return nil
+	}
+	for _, rng := range []Range{Range1M, Range3M, Range1Y} {
+		if e, state := s.candles.Get(candleKey(symbol, rng)); state == cache.Fresh {
+			if v := dailyVolumeOn(e.Value, *asOf); v != nil {
+				return v
+			}
+		}
+	}
+	return nil
+}
+
+// dailyVolumeOn returns the last daily bar's volume when that bar is asOf's
+// session date in the exchange's time zone.
+func dailyVolumeOn(series CandleSeries, asOf time.Time) *int64 {
+	last := len(series.Candles) - 1
+	if last < 0 || series.Interval != Interval1Day {
+		return nil
+	}
+	loc, err := time.LoadLocation(series.ExchangeTimezone)
+	if err != nil {
+		loc, _ = time.LoadLocation("America/New_York")
+	}
+	bar := series.Candles[last]
+	if bar.Time.In(loc).Format(time.DateOnly) != asOf.In(loc).Format(time.DateOnly) {
+		return nil
+	}
+	return bar.Volume
+}
+
+// EarningsResult is the next scheduled earnings report for a symbol; Next is
+// nil when none is scheduled within the vendor's calendar.
+type EarningsResult struct {
+	Symbol    Symbol         `json:"symbol"`
+	Next      *EarningsEvent `json:"next"`
+	Freshness Freshness      `json:"freshness"`
+}
+
+// NextEarnings returns the next earnings report. It fails with
+// ErrNotConfigured when no configured vendor publishes an earnings calendar.
+func (s *Service) NextEarnings(ctx context.Context, symbol Symbol) (EarningsResult, error) {
+	ep, ok := s.source(KindEarnings).(EarningsProvider)
+	if !ok {
+		return EarningsResult{}, ErrNotConfigured
+	}
+	e, stale, err := load(ctx, s, s.earnings, "earnings:"+string(symbol), fixedTTL[*EarningsEvent](earningsTTL),
+		func(fctx context.Context) (*EarningsEvent, error) { return ep.NextEarnings(fctx, symbol, s.cfg.Now()) })
+	if err != nil {
+		return EarningsResult{}, err
+	}
+	return EarningsResult{Symbol: symbol, Next: e.Value, Freshness: s.freshness(KindEarnings, nil, e.StoredAt, stale)}, nil
 }
 
 // Quotes returns quotes for several symbols. It fails only when nothing could
@@ -446,11 +569,14 @@ func (s *Service) Overview(ctx context.Context) (Overview, error) {
 	return ov, nil
 }
 
+func candleKey(symbol Symbol, rng Range) string {
+	return "candles:" + string(symbol) + ":" + string(rng)
+}
+
 // Candles returns the bars covering a UI range.
 func (s *Service) Candles(ctx context.Context, symbol Symbol, rng Range) (CandlesResult, error) {
 	spec := rng.Spec()
-	key := "candles:" + string(symbol) + ":" + string(rng)
-	e, stale, err := load(ctx, s, s.candles, key, s.candleTTL(spec), func(fctx context.Context) (CandleSeries, error) {
+	e, stale, err := load(ctx, s, s.candles, candleKey(symbol, rng), s.candleTTL(spec), func(fctx context.Context) (CandleSeries, error) {
 		return s.provider.Candles(fctx, symbol, spec.Interval, spec.Bars+WarmupBars)
 	})
 	if err != nil {
@@ -465,7 +591,7 @@ func (s *Service) Candles(ctx context.Context, symbol Symbol, rng Range) (Candle
 		t := visible[n-1].Time
 		asOf = &t
 	}
-	return CandlesResult{CandleSeries: series, Warmup: warmup, Range: rng, Freshness: s.freshness(asOf, e.StoredAt, stale)}, nil
+	return CandlesResult{CandleSeries: series, Warmup: warmup, Range: rng, Freshness: s.freshness(KindCandles, asOf, e.StoredAt, stale)}, nil
 }
 
 // Levels computes support and resistance from the same candles the chart for
@@ -507,7 +633,7 @@ func (s *Service) MarketStatus(ctx context.Context) (StatusResult, error) {
 	elapsed := int64(s.cfg.Now().Sub(e.StoredAt) / time.Second)
 	st.OpensInSeconds = remaining(st.OpensInSeconds, elapsed)
 	st.ClosesInSeconds = remaining(st.ClosesInSeconds, elapsed)
-	return StatusResult{MarketStatus: st, Freshness: s.freshness(nil, e.StoredAt, stale)}, nil
+	return StatusResult{MarketStatus: st, Freshness: s.freshness(KindStatus, nil, e.StoredAt, stale)}, nil
 }
 
 // remaining shortens a countdown by elapsed seconds; nil once it has run out.

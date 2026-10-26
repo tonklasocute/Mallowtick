@@ -17,6 +17,7 @@ import (
 
 	"github.com/tonklasocute/mallowtick/services/api/internal/config"
 	"github.com/tonklasocute/mallowtick/services/api/internal/market"
+	"github.com/tonklasocute/mallowtick/services/api/internal/market/finnhub"
 	"github.com/tonklasocute/mallowtick/services/api/internal/market/twelvedata"
 	"github.com/tonklasocute/mallowtick/services/api/internal/supportresistance"
 	httptransport "github.com/tonklasocute/mallowtick/services/api/internal/transport/http"
@@ -55,7 +56,7 @@ func run() error {
 		Logger:          log,
 	})
 
-	if provider.Configured() {
+	if cfg.ProviderConfigured() {
 		// Spend the market-status credit before any client arrives, so the first
 		// Discover load (overview batch + one sparkline) fits the per-minute budget.
 		go func() {
@@ -113,17 +114,40 @@ func newLogger(cfg config.Config) *slog.Logger {
 	return slog.New(slog.NewJSONHandler(os.Stdout, opts))
 }
 
+// newProvider returns Twelve Data alone, or, with a Finnhub key, Finnhub for
+// quotes, search and earnings combined with Twelve Data for candles and market
+// status.
 func newProvider(cfg config.Config, log *slog.Logger) (market.Provider, error) {
-	if !cfg.ProviderConfigured() {
-		log.Warn("TWELVEDATA_API_KEY is not set; market data endpoints will report provider_not_configured")
-		return market.Unconfigured{ProviderName: twelvedata.ProviderName}, nil
+	var bars market.Provider = market.Unconfigured{ProviderName: twelvedata.ProviderName}
+	if cfg.ProviderConfigured() {
+		td, err := twelvedata.New(twelvedata.Config{
+			APIKey:           cfg.TwelveData.APIKey,
+			BaseURL:          cfg.TwelveData.BaseURL,
+			CreditsPerMinute: cfg.TwelveData.CreditsPerMinute,
+			MaxWait:          cfg.TwelveData.MaxWait,
+			HTTPClient:       &http.Client{Timeout: cfg.TwelveData.Timeout},
+			Logger:           log,
+		})
+		if err != nil {
+			return nil, err
+		}
+		bars = td
+	} else {
+		log.Warn("TWELVEDATA_API_KEY is not set; candles and market status will report provider_not_configured")
 	}
-	return twelvedata.New(twelvedata.Config{
-		APIKey:           cfg.TwelveData.APIKey,
-		BaseURL:          cfg.TwelveData.BaseURL,
-		CreditsPerMinute: cfg.TwelveData.CreditsPerMinute,
-		MaxWait:          cfg.TwelveData.MaxWait,
-		HTTPClient:       &http.Client{Timeout: cfg.TwelveData.Timeout},
-		Logger:           log,
+	if cfg.Finnhub.APIKey == "" {
+		return bars, nil
+	}
+	fh, err := finnhub.New(finnhub.Config{
+		APIKey:         cfg.Finnhub.APIKey,
+		BaseURL:        cfg.Finnhub.BaseURL,
+		CallsPerMinute: cfg.Finnhub.CallsPerMinute,
+		MaxWait:        cfg.Finnhub.MaxWait,
+		HTTPClient:     &http.Client{Timeout: cfg.Finnhub.Timeout},
+		Logger:         log,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return market.Composite{QuoteSource: fh, BarSource: bars}, nil
 }
