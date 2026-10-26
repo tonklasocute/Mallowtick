@@ -59,6 +59,22 @@ Twelve Data counts credits in a **sliding 60-second window**, verified with the 
 counter: both let a 9th credit through, and the provider returns 429. To see real usage, run
 the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
 
+## Price chart
+
+- Stock Detail opens on **1M daily candles**. EMA lines (default 20/50/100/200, 2–300
+  bars, four colour slots) are computed in the browser (`lib/ema.ts`) from the API's
+  `warmup` + `candles`; chart layer toggles and periods are saved per device
+  (`features/stock-detail/chart-prefs.ts`).
+- The chart card follows a cute pastel mock: pastel candles, prices as pills beside the
+  plot instead of a price axis, dashed pink/mint levels. No earnings markers or chip until
+  there is a real earnings data source.
+- The chart shows **no TradingView logo** (`attributionLogo: false`, the user's decision).
+  The licence allows that only because More → About shows the NOTICE text and a link to
+  https://www.tradingview.com/. Keep that credit when editing the More screen.
+- Colour tokens read only by the canvas or inline styles go in the `@theme static` block of
+  `globals.css`. Tailwind v4 drops theme variables that no utility class uses, so they
+  would silently fall back otherwise.
+
 ## Local development (Windows)
 
 - pnpm is not installed globally; run it through corepack: `corepack pnpm install`,
