@@ -171,6 +171,11 @@ func (h *handlers) candles(c *gin.Context) {
 		fail(c, h.log, err)
 		return
 	}
+	// Warm-up bars are only for clients that compute indicators; others
+	// (e.g. sparklines) get the smaller payload.
+	if c.Query("warmup") != "true" {
+		res.Warmup = nil
+	}
 	ok(c, res)
 }
 

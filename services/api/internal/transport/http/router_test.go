@@ -54,7 +54,19 @@ func (s *stubService) Quotes(_ context.Context, syms []market.Symbol) (market.Qu
 }
 func (s *stubService) Candles(_ context.Context, sym market.Symbol, rng market.Range) (market.CandlesResult, error) {
 	s.lastSymbol, s.lastRange = sym, rng
-	return market.CandlesResult{Range: rng}, s.err
+	return market.CandlesResult{Range: rng, Warmup: []market.Candle{{Close: 1}}}, s.err
+}
+
+func TestCandlesIncludeWarmupOnlyWhenAsked(t *testing.T) {
+	svc := &stubService{}
+	_, plain := do(t, svc, http.MethodGet, "/api/v1/stocks/aapl/candles?range=1m", nil)
+	if strings.Contains(string(plain.Data), `"warmup"`) {
+		t.Errorf("warm-up bars should be omitted by default: %s", plain.Data)
+	}
+	_, withWarmup := do(t, svc, http.MethodGet, "/api/v1/stocks/aapl/candles?range=1m&warmup=true", nil)
+	if !strings.Contains(string(withWarmup.Data), `"warmup":[`) {
+		t.Errorf("warmup=true should include warm-up bars: %s", withWarmup.Data)
+	}
 }
 func (s *stubService) Levels(_ context.Context, sym market.Symbol, rng market.Range) (market.LevelsResult, error) {
 	s.lastSymbol, s.lastRange = sym, rng

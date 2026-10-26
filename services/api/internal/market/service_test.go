@@ -22,6 +22,7 @@ type fakeProvider struct {
 	status      *MarketStatus // nil reports an open market without countdowns
 	quoteCalls  atomic.Int32
 	candleCalls atomic.Int32
+	candleBars  atomic.Int32 // bars requested by the last Candles call
 	statusCalls atomic.Int32
 	block       chan struct{} // when set, Quotes waits on it
 }
@@ -49,8 +50,9 @@ func (f *fakeProvider) Quotes(_ context.Context, symbols []Symbol) (map[Symbol]Q
 	}
 	return out, f.partialErr
 }
-func (f *fakeProvider) Candles(context.Context, Symbol, Interval, int) (CandleSeries, error) {
+func (f *fakeProvider) Candles(_ context.Context, _ Symbol, _ Interval, bars int) (CandleSeries, error) {
 	f.candleCalls.Add(1)
+	f.candleBars.Store(int32(bars))
 	return f.candles, nil
 }
 func (f *fakeProvider) MarketStatus(context.Context) (MarketStatus, error) {
@@ -367,6 +369,30 @@ func TestOverviewSplitsConfiguredLists(t *testing.T) {
 	}
 	if p.quoteCalls.Load() != 1 {
 		t.Fatalf("overview should use one batch request; calls = %d", p.quoteCalls.Load())
+	}
+}
+
+func TestCandlesSplitWarmupFromRangeBars(t *testing.T) {
+	var candles []Candle
+	start := time.Date(2025, 1, 2, 14, 30, 0, 0, time.UTC)
+	for i := range 70 {
+		candles = append(candles, Candle{Time: start.Add(time.Duration(i) * 24 * time.Hour), Close: float64(i)})
+	}
+	p := &fakeProvider{candles: CandleSeries{Symbol: "AAPL", Interval: Interval1Day, Candles: candles}}
+	s := newTestService(p, &testClock{t: time.Unix(0, 0)})
+
+	res, err := s.Candles(context.Background(), "AAPL", Range3M)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := int(p.candleBars.Load()), Range3M.Spec().Bars+WarmupBars; got != want {
+		t.Fatalf("provider asked for %d bars, want %d (range + warm-up in one request)", got, want)
+	}
+	if len(res.Candles) != 63 || len(res.Warmup) != 7 {
+		t.Fatalf("want 63 range bars and 7 warm-up bars, got %d and %d", len(res.Candles), len(res.Warmup))
+	}
+	if res.Candles[0].Close != 7 || !res.Freshness.AsOf.Equal(candles[69].Time) {
+		t.Fatalf("range bars should be the most recent ones: first close %v, asOf %v", res.Candles[0].Close, res.Freshness.AsOf)
 	}
 }
 
