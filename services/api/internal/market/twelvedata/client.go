@@ -16,8 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/time/rate"
-
 	"github.com/tonklasocute/mallowtick/services/api/internal/market"
 )
 
@@ -31,8 +29,8 @@ type Config struct {
 	APIKey  string
 	BaseURL string
 	// CreditsPerMinute is the plan's per-minute API credit allowance. The
-	// client spends credits locally before each request so it never bursts
-	// past the plan limit.
+	// client books credits in a sliding minute before each request, as the
+	// provider counts them, so it never exceeds the plan limit.
 	CreditsPerMinute int
 	// MaxWait bounds how long a request waits for credits before failing with
 	// market.ErrRateLimited.
@@ -46,7 +44,7 @@ type Client struct {
 	apiKey  string
 	baseURL *url.URL
 	http    *http.Client
-	limiter *rate.Limiter
+	budget  *creditBudget
 	burst   int
 	maxWait time.Duration
 	log     *slog.Logger
@@ -76,7 +74,7 @@ func New(cfg Config) (*Client, error) {
 		apiKey:  cfg.APIKey,
 		baseURL: base,
 		http:    cfg.HTTPClient,
-		limiter: rate.NewLimiter(rate.Every(time.Minute/time.Duration(cfg.CreditsPerMinute)), cfg.CreditsPerMinute),
+		budget:  newCreditBudget(cfg.CreditsPerMinute),
 		burst:   cfg.CreditsPerMinute,
 		maxWait: cfg.MaxWait,
 		log:     cfg.Logger,
@@ -131,32 +129,38 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, credit
 
 	var probe apiError
 	_ = json.Unmarshal(body, &probe) // a non-object body (e.g. an array) is not an error envelope
-	if probe.isError() {
-		return nil, mapError(probe.Code, probe.Message)
+	switch {
+	case probe.isError():
+		err = mapError(probe.Code, probe.Message)
+	case resp.StatusCode >= 300:
+		err = mapError(resp.StatusCode, http.StatusText(resp.StatusCode))
+	default:
+		return body, nil
 	}
-	if resp.StatusCode >= 300 {
-		return nil, mapError(resp.StatusCode, http.StatusText(resp.StatusCode))
+	if errors.Is(err, market.ErrRateLimited) {
+		// Stop sending requests the provider would refuse.
+		c.budget.exhaust()
 	}
-	return body, nil
+	return nil, err
 }
 
-// spend reserves credits from the local limiter, failing fast with
+// spend books credits in the per-minute budget, failing fast with
 // ErrRateLimited instead of queueing requests for longer than maxWait.
 func (c *Client) spend(ctx context.Context, credits int) error {
 	if credits > c.burst {
 		return fmt.Errorf("%w: request needs %d credits but the plan allows %d per minute", market.ErrRateLimited, credits, c.burst)
 	}
-	r := c.limiter.ReserveN(time.Now(), credits)
-	if delay := r.Delay(); delay > c.maxWait {
-		r.Cancel()
+	b, delay := c.budget.reserve(credits, c.maxWait)
+	if b == nil {
 		return fmt.Errorf("%w: next credits available in %s", market.ErrRateLimited, delay.Round(time.Second))
-	} else if delay > 0 {
+	}
+	if delay > 0 {
 		t := time.NewTimer(delay)
 		defer t.Stop()
 		select {
 		case <-t.C:
 		case <-ctx.Done():
-			r.Cancel()
+			c.budget.release(b)
 			return ctx.Err()
 		}
 	}

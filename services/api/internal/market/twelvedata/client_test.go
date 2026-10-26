@@ -39,8 +39,12 @@ func newTestClient(t *testing.T, routes map[string]http.HandlerFunc, credits int
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A fixed mid-minute clock keeps budget tests independent of when they run.
+	c.budget.now = fixedClock(time.Date(2026, 10, 26, 12, 27, 30, 0, time.UTC))
 	return c
 }
+
+func fixedClock(t time.Time) func() time.Time { return func() time.Time { return t } }
 
 func respond(body string) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(body)) }
@@ -169,6 +173,71 @@ func TestLocalRateLimitFailsFast(t *testing.T) {
 	}
 }
 
+func TestProviderRateLimitStopsRequestsForTheMinute(t *testing.T) {
+	var calls atomic.Int32
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/quote": func(w http.ResponseWriter, _ *http.Request) {
+			calls.Add(1)
+			_, _ = w.Write([]byte(`{"code":429,"message":"You have run out of API credits for the current minute","status":"error"}`))
+		},
+	}, 8)
+	ctx := context.Background()
+	if _, err := c.Quotes(ctx, []market.Symbol{"AAPL"}); !errors.Is(err, market.ErrRateLimited) {
+		t.Fatalf("got %v, want ErrRateLimited", err)
+	}
+	if _, err := c.Quotes(ctx, []market.Symbol{"AAPL"}); !errors.Is(err, market.ErrRateLimited) {
+		t.Fatalf("got %v, want ErrRateLimited", err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("after a provider 429 no request should be sent until the minute ends; calls = %d", calls.Load())
+	}
+}
+
+// clock is a settable time source for budget tests.
+type clock struct{ t time.Time }
+
+func (c *clock) now() time.Time { return c.t }
+
+func TestBudgetCountsASlidingMinute(t *testing.T) {
+	// The sequence the provider rejected: 1 credit at :43, 7 at :54, then 1 at
+	// :01 of the next minute, still within 60 seconds of the first.
+	clk := &clock{t: time.Date(2026, 10, 26, 12, 30, 43, 0, time.UTC)}
+	b := newCreditBudget(8)
+	b.now = clk.now
+	b.reserve(1, 0)
+	clk.t = clk.t.Add(11 * time.Second)
+	if e, _ := b.reserve(7, 0); e == nil {
+		t.Fatal("7 credits should fit beside the first one")
+	}
+
+	clk.t = clk.t.Add(7 * time.Second)
+	if e, wait := b.reserve(1, 10*time.Second); e != nil {
+		t.Fatalf("a 9th credit within 60s must not be booked (wait %s)", wait)
+	}
+	// It becomes available once the :43 credit is a minute old (plus margin).
+	wantWait := 60*time.Second + windowMargin - 18*time.Second
+	if e, wait := b.reserve(1, time.Minute); e == nil || wait != wantWait {
+		t.Fatalf("got wait %s, want %s", wait, wantWait)
+	}
+}
+
+func TestBudgetReleaseAndExhaust(t *testing.T) {
+	clk := &clock{t: time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)}
+	b := newCreditBudget(8)
+	b.now = clk.now
+	e, _ := b.reserve(8, 0)
+	b.release(e)
+	if e, _ := b.reserve(8, 0); e == nil {
+		t.Fatal("released credits should be bookable again")
+	}
+
+	clk.t = clk.t.Add(2 * time.Minute)
+	b.exhaust()
+	if e, _ := b.reserve(1, 30*time.Second); e != nil {
+		t.Fatal("after exhaust no credit should be available within the window")
+	}
+}
+
 func TestBatchLargerThanAllowanceReturnsPartial(t *testing.T) {
 	c := newTestClient(t, map[string]http.HandlerFunc{
 		"/quote": func(w http.ResponseWriter, r *http.Request) {
@@ -180,11 +249,41 @@ func TestBatchLargerThanAllowanceReturnsPartial(t *testing.T) {
 		},
 	}, 2)
 	got, err := c.Quotes(context.Background(), []market.Symbol{"AAA", "BBB", "CCC"})
-	if err != nil {
-		t.Fatalf("partial results should not be an error: %v", err)
+	if !errors.Is(err, market.ErrRateLimited) {
+		t.Fatalf("the symbol left over should be reported as rate limited, got %v", err)
 	}
 	if len(got) != 2 {
-		t.Fatalf("got %d quotes, want 2", len(got))
+		t.Fatalf("got %d quotes, want the 2 that fit", len(got))
+	}
+}
+
+func TestBatchUsesOnlyTheCreditsLeft(t *testing.T) {
+	var sizes []int
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/quote": func(w http.ResponseWriter, r *http.Request) {
+			syms := strings.Split(r.URL.Query().Get("symbol"), ",")
+			sizes = append(sizes, len(syms))
+			body := `{`
+			for i, s := range syms {
+				if i > 0 {
+					body += ","
+				}
+				body += `"` + s + `":{"symbol":"` + s + `","close":"1"}`
+			}
+			_, _ = w.Write([]byte(body + `}`))
+		},
+		"/market_state": respond(`[{"name":"NYSE","code":"XNYS","is_market_open":false,"time_to_open":"10:00:00"}]`),
+	}, 8)
+	ctx := context.Background()
+	if _, err := c.MarketStatus(ctx); err != nil { // 1 credit, 7 left
+		t.Fatal(err)
+	}
+	got, err := c.Quotes(ctx, []market.Symbol{"S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8"})
+	if !errors.Is(err, market.ErrRateLimited) || len(got) != 7 {
+		t.Fatalf("want the first 7 symbols and ErrRateLimited for the 8th; got %d quotes, err %v", len(got), err)
+	}
+	if len(sizes) != 1 || sizes[0] != 7 {
+		t.Fatalf("one request sized to the free credits expected, got %v", sizes)
 	}
 }
 

@@ -17,9 +17,12 @@ type fakeProvider struct {
 	mu          sync.Mutex
 	quotes      map[Symbol]Quote
 	quoteErr    error
+	partialErr  error // returned with whatever quotes are available
 	candles     CandleSeries
+	status      *MarketStatus // nil reports an open market without countdowns
 	quoteCalls  atomic.Int32
 	candleCalls atomic.Int32
+	statusCalls atomic.Int32
 	block       chan struct{} // when set, Quotes waits on it
 }
 
@@ -44,14 +47,24 @@ func (f *fakeProvider) Quotes(_ context.Context, symbols []Symbol) (map[Symbol]Q
 			out[s] = q
 		}
 	}
-	return out, nil
+	return out, f.partialErr
 }
 func (f *fakeProvider) Candles(context.Context, Symbol, Interval, int) (CandleSeries, error) {
 	f.candleCalls.Add(1)
 	return f.candles, nil
 }
 func (f *fakeProvider) MarketStatus(context.Context) (MarketStatus, error) {
+	f.statusCalls.Add(1)
+	if f.status != nil {
+		return *f.status, nil
+	}
 	return MarketStatus{Exchange: "XNYS", IsOpen: true}, nil
+}
+
+func int64Ptr(n int64) *int64 { return &n }
+
+func closedFor(d time.Duration) *MarketStatus {
+	return &MarketStatus{Exchange: "XNYS", OpensInSeconds: int64Ptr(int64(d / time.Second))}
 }
 
 func (f *fakeProvider) setErr(err error) {
@@ -135,6 +148,103 @@ func TestClosedMarketQuoteUsesLongerTTL(t *testing.T) {
 	}
 }
 
+func TestStatusIsCachedUntilNextTransition(t *testing.T) {
+	clk := &testClock{t: time.Unix(0, 0)}
+	p := &fakeProvider{status: &MarketStatus{Exchange: "XNYS", IsOpen: true, ClosesInSeconds: int64Ptr(3600)}}
+	s := newTestService(p, clk)
+	ctx := context.Background()
+	if _, err := s.MarketStatus(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	clk.advance(30 * time.Minute)
+	st, err := s.MarketStatus(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.statusCalls.Load() != 1 {
+		t.Fatalf("status should be cached until the close; calls = %d", p.statusCalls.Load())
+	}
+	if st.ClosesInSeconds == nil || *st.ClosesInSeconds != 1800 {
+		t.Fatalf("countdown should shrink with the cached value's age, got %v", st.ClosesInSeconds)
+	}
+
+	clk.advance(31 * time.Minute)
+	if _, err := s.MarketStatus(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if p.statusCalls.Load() != 2 {
+		t.Fatalf("status should be refetched after the close; calls = %d", p.statusCalls.Load())
+	}
+}
+
+func TestStatusCacheIsCappedForLongClosures(t *testing.T) {
+	clk := &testClock{t: time.Unix(0, 0)}
+	p := &fakeProvider{status: closedFor(60 * time.Hour)}
+	s := newTestService(p, clk)
+	_, _ = s.MarketStatus(context.Background())
+	clk.advance(6*time.Hour + time.Second)
+	_, _ = s.MarketStatus(context.Background())
+	if p.statusCalls.Load() != 2 {
+		t.Fatalf("status should be rechecked after %s; calls = %d", statusMaxTTL, p.statusCalls.Load())
+	}
+}
+
+func TestClosedMarketKeepsQuotesUntilOpen(t *testing.T) {
+	clk := &testClock{t: time.Unix(0, 0)}
+	p := &fakeProvider{
+		quotes: map[Symbol]Quote{"AAPL": quote("AAPL", 1, false)},
+		status: closedFor(10 * time.Hour),
+	}
+	s := newTestService(p, clk)
+	ctx := context.Background()
+	_, _ = s.MarketStatus(ctx)
+	_, _ = s.Quote(ctx, "AAPL")
+
+	clk.advance(9 * time.Hour)
+	_, _ = s.Quote(ctx, "AAPL")
+	if p.quoteCalls.Load() != 1 {
+		t.Fatalf("closed-market quote should stay cached until the open; calls = %d", p.quoteCalls.Load())
+	}
+
+	clk.advance(2 * time.Hour)
+	p.status = &MarketStatus{Exchange: "XNYS", IsOpen: true, ClosesInSeconds: int64Ptr(6 * 3600)}
+	_, _ = s.Quote(ctx, "AAPL")
+	if p.quoteCalls.Load() != 2 {
+		t.Fatalf("quote should be refetched once the market opens; calls = %d", p.quoteCalls.Load())
+	}
+}
+
+func TestClosedMarketKeepsCandlesUntilOpen(t *testing.T) {
+	clk := &testClock{t: time.Unix(0, 0)}
+	p := &fakeProvider{status: closedFor(10 * time.Hour)}
+	s := newTestService(p, clk)
+	ctx := context.Background()
+	_, _ = s.MarketStatus(ctx)
+	_, _ = s.Candles(ctx, "AAPL", Range1D)
+
+	clk.advance(time.Hour) // well past the 1D range's open-market TTL
+	_, _ = s.Candles(ctx, "AAPL", Range1D)
+	if p.candleCalls.Load() != 1 {
+		t.Fatalf("closed-market candles should stay cached until the open; calls = %d", p.candleCalls.Load())
+	}
+}
+
+func TestOpenMarketCandlesUseRangeTTL(t *testing.T) {
+	clk := &testClock{t: time.Unix(0, 0)}
+	p := &fakeProvider{}
+	s := newTestService(p, clk)
+	ctx := context.Background()
+	_, _ = s.MarketStatus(ctx)
+	_, _ = s.Candles(ctx, "AAPL", Range1D)
+
+	clk.advance(Range1D.Spec().CacheTTL + time.Second)
+	_, _ = s.Candles(ctx, "AAPL", Range1D)
+	if p.candleCalls.Load() != 2 {
+		t.Fatalf("open-market candles should expire after the range TTL; calls = %d", p.candleCalls.Load())
+	}
+}
+
 func TestStaleFallbackIsMarked(t *testing.T) {
 	clk := &testClock{t: time.Unix(0, 0)}
 	p := &fakeProvider{quotes: map[Symbol]Quote{"AAPL": quote("AAPL", 1, true)}}
@@ -184,6 +294,22 @@ func TestBatchReportsUnavailableSymbols(t *testing.T) {
 	}
 	if len(b.Unavailable) != 1 || b.Unavailable[0] != (UnavailableSymbol{Symbol: "ZZZZ", Reason: "not_found"}) {
 		t.Fatalf("unavailable = %+v", b.Unavailable)
+	}
+}
+
+func TestPartialBatchReportsWhyTheRestIsMissing(t *testing.T) {
+	clk := &testClock{t: time.Unix(0, 0)}
+	p := &fakeProvider{
+		quotes:     map[Symbol]Quote{"SPY": quote("SPY", 1, true)},
+		partialErr: fmt.Errorf("%w: no credits left", ErrRateLimited),
+	}
+	s := newTestService(p, clk)
+	b, err := s.Quotes(context.Background(), []Symbol{"SPY", "QQQ"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Quotes) != 1 || len(b.Unavailable) != 1 || b.Unavailable[0].Reason != "rate_limited" {
+		t.Fatalf("want SPY quoted and QQQ rate_limited (not not_found), got %+v", b)
 	}
 }
 
