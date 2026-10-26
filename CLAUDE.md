@@ -41,6 +41,12 @@ the components; there is no i18n library yet. Tests assert the Thai strings.
 - API text that the UI shows verbatim must be Thai too, e.g. the levels disclaimer in
   `services/api/internal/market/service.go`.
 
+## Server vs browser rendering
+
+Pages are server-rendered and then hydrated. Values that only the browser knows (storage,
+display mode, …) must not appear in the first render: read them with `useSyncExternalStore`
+and a server snapshot of `null` (see `useStorageDescription`, `useIsStandalone`).
+
 ## Local development (Windows)
 
 - pnpm is not installed globally; run it through corepack: `corepack pnpm install`,
@@ -54,6 +60,3 @@ the components; there is no i18n library yet. Tests assert the Thai strings.
 - `make lint` fails at `format:check`: the working copy is CRLF (`core.autocrlf=true`) and
   Prettier expects LF, so ~95 files are flagged even when unchanged. To check edited
   files only: `prettier --check --end-of-line auto <files>`.
-- Hydration mismatch on `/more`: `createRepository` in `apps/web/src/app/providers.tsx`
-  returns `MemoryWatchlistRepository` on the server but `LocalStorageWatchlistRepository` in
-  the browser, so the watchlist storage description differs between server and client HTML.

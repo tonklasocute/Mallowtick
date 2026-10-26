@@ -1,7 +1,10 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { WatchlistProvider } from "@/features/watchlist/use-watchlist";
 import { MemoryWatchlistRepository } from "@/features/watchlist/watchlist-repository";
 import { WatchlistScreen } from "@/features/watchlist/watchlist-screen";
 import { WatchlistToggle } from "@/features/watchlist/watchlist-toggle";
@@ -51,6 +54,18 @@ describe("WatchlistScreen", () => {
     expect(await screen.findByText("ยังไม่มีหุ้นที่สนใจ")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "สำรวจหุ้น" })).toHaveAttribute("href", "/#search");
     expect(screen.getByText(/อุปกรณ์นี้เท่านั้น|หน่วยความจำ/)).toBeInTheDocument();
+  });
+
+  it("keeps the storage description out of server HTML so hydration matches", () => {
+    const html = renderToString(
+      <QueryClientProvider client={new QueryClient()}>
+        <WatchlistProvider repository={new MemoryWatchlistRepository()}>
+          <WatchlistScreen />
+        </WatchlistProvider>
+      </QueryClientProvider>,
+    );
+    expect(html).toContain("หุ้นที่สนใจ");
+    expect(html).not.toContain("หน่วยความจำ");
   });
 
   it("lists quotes, reports unavailable symbols, and removes in edit mode", async () => {

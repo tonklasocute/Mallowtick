@@ -1,7 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 
 import { addSymbol, removeSymbol, toggleSymbol } from "./watchlist-model";
 import type { WatchlistRepository } from "./watchlist-repository";
@@ -22,6 +29,21 @@ export function useWatchlistRepository(): WatchlistRepository {
   const repo = useContext(RepositoryContext);
   if (!repo) throw new Error("useWatchlist must be used inside <WatchlistProvider>");
   return repo;
+}
+
+const noSubscription = () => () => {};
+
+/**
+ * Where the watchlist is stored, or null during SSR and hydration: the server always uses the
+ * in-memory repository, so rendering its description there would not match the browser.
+ */
+export function useStorageDescription(): string | null {
+  const repo = useWatchlistRepository();
+  return useSyncExternalStore(
+    noSubscription,
+    () => repo.storageDescription,
+    () => null,
+  );
 }
 
 const WATCHLIST_KEY = ["watchlist"] as const;

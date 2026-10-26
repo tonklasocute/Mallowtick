@@ -21,7 +21,7 @@ import { isApiError } from "@/services/api/client";
 import { useQuotes, useSparkline } from "@/services/api/queries";
 import type { Quote } from "@/types/api";
 
-import { useWatchlist, useWatchlistRepository } from "./use-watchlist";
+import { useStorageDescription, useWatchlist } from "./use-watchlist";
 
 function RowSparkline({ quote }: { quote: Quote }) {
   const { data } = useSparkline(quote.symbol);
@@ -37,7 +37,7 @@ function RowSparkline({ quote }: { quote: Quote }) {
 
 export function WatchlistScreen() {
   const wl = useWatchlist();
-  const repo = useWatchlistRepository();
+  const storage = useStorageDescription();
   const [editing, setEditing] = useState(false);
   const quotes = useQuotes(wl.symbols);
 
@@ -157,7 +157,7 @@ export function WatchlistScreen() {
             </Card>
           </>
         )}
-        <p className="px-1 text-[11px] text-slate">{repo.storageDescription}</p>
+        {storage && <p className="px-1 text-[11px] text-slate">{storage}</p>}
       </main>
     </PageContainer>
   );

@@ -11,7 +11,7 @@ import { errorCopy } from "@/components/market/api-error-state";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useWatchlistRepository } from "@/features/watchlist/use-watchlist";
+import { useStorageDescription } from "@/features/watchlist/use-watchlist";
 import { BRAND } from "@/lib/brand";
 import { useHealth } from "@/services/api/queries";
 import type { Latency } from "@/types/api";
@@ -91,7 +91,7 @@ function ProviderStatus() {
 }
 
 export function MoreScreen() {
-  const repo = useWatchlistRepository();
+  const storage = useStorageDescription();
   const standalone = useIsStandalone();
   return (
     <PageContainer>
@@ -109,7 +109,7 @@ export function MoreScreen() {
           icon={<Smartphone aria-hidden className="size-5" />}
           title="ที่เก็บรายการหุ้นที่สนใจ"
         >
-          <p>{repo.storageDescription}</p>
+          {storage ? <p>{storage}</p> : <Skeleton className="h-10 w-full" />}
         </Section>
 
         <Section icon={<Download aria-hidden className="size-5" />} title="ติดตั้งบน iPhone">
