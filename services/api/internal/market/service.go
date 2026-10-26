@@ -151,7 +151,7 @@ type StatusResult struct {
 	Freshness Freshness `json:"freshness"`
 }
 
-const levelsDisclaimer = "Levels are calculated by Mallowtick from historical candles. They are analytical estimates, not provider data, and do not predict future prices."
+const levelsDisclaimer = "แนวรับ-แนวต้านคำนวณโดย Mallowtick จากแท่งเทียนย้อนหลัง เป็นค่าประมาณเชิงวิเคราะห์ ไม่ใช่ข้อมูลจากผู้ให้บริการ และไม่ได้คาดการณ์ราคาในอนาคต"
 
 func (s *Service) freshness(asOf *time.Time, fetchedAt time.Time, stale bool) Freshness {
 	return Freshness{Provider: s.provider.Name(), Latency: s.cfg.Latency, AsOf: asOf, FetchedAt: fetchedAt.UTC(), Stale: stale}
