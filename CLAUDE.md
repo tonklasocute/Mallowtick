@@ -47,12 +47,28 @@ Pages are server-rendered and then hydrated. Values that only the browser knows 
 display mode, …) must not appear in the first render: read them with `useSyncExternalStore`
 and a server snapshot of `null` (see `useStorageDescription`, `useIsStandalone`).
 
+## Provider credit budget
+
+The Twelve Data free plan allows 8 credits/minute and 800/day, and a batch quote costs one
+credit per symbol. Before adding anything that calls the provider, work out its credit cost
+and keep it inside the budget in [docs/market-data.md](docs/market-data.md#credit-budget-on-the-free-plan)
+(server cache first, fetch only what is on screen).
+
+Twelve Data counts credits in a **sliding 60-second window**, verified with the real API on
+2026-10-26. Don't swap `twelvedata/budget.go` for a token bucket or a per-calendar-minute
+counter: both let a 9th credit through, and the provider returns 429. To see real usage, run
+the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
+
 ## Local development (Windows)
 
 - pnpm is not installed globally; run it through corepack: `corepack pnpm install`,
   `corepack pnpm --filter @mallowtick/web dev` (port 3000).
-- API: `go run ./cmd/api` in `services/api` (port 8080). Without `services/api/.env` it runs
-  with the provider not configured. `go run` does not hot-reload; restart after Go changes.
+- API: `go run ./cmd/api` in `services/api` (port 8080). It reads its settings from the
+  environment; `go run` alone does not load `services/api/.env` (`make dev-api` does, through
+  bash). Without a key it runs with the provider not configured. `go run` does not
+  hot-reload; restart after Go changes.
+- `services/api/.env` holds the real Twelve Data key. It is gitignored; never commit it or
+  print it in logs or output.
 - Git Bash `sed -i` converts CRLF files to LF. Edit with the Edit tool or `perl -pi` instead.
 
 ## Known issues
@@ -60,3 +76,8 @@ and a server snapshot of `null` (see `useStorageDescription`, `useIsStandalone`)
 - `make lint` fails at `format:check`: the working copy is CRLF (`core.autocrlf=true`) and
   Prettier expects LF, so ~95 files are flagged even when unchanged. To check edited
   files only: `prettier --check --end-of-line auto <files>`.
+- `services/api/.env` must use LF line endings. `make dev-api` sources it with bash, so a
+  CRLF copy of `.env.example` leaves `\r` on every value and the API key is rejected.
+  Convert with `tr -d '\r'` after copying.
+- `gofmt -l .` lists every Go file for the same CRLF reason. To check a file:
+  `tr -d '\r' < file.go | gofmt -d`.
