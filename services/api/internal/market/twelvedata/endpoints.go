@@ -149,7 +149,7 @@ func (c *Client) Quotes(ctx context.Context, symbols []market.Symbol) (map[marke
 	out := make(map[market.Symbol]market.Quote, len(symbols))
 	for start := 0; start < len(symbols); {
 		size := min(c.burst, len(symbols)-start)
-		if avail := c.budget.available(); avail < size {
+		if avail := c.budget.Available(); avail < size {
 			if start > 0 && avail == 0 {
 				return out, fmt.Errorf("%w: no credits left for %d more symbols", market.ErrRateLimited, len(symbols)-start)
 			}

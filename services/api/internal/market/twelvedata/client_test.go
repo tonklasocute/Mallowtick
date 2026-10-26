@@ -40,7 +40,7 @@ func newTestClient(t *testing.T, routes map[string]http.HandlerFunc, credits int
 		t.Fatal(err)
 	}
 	// A fixed mid-minute clock keeps budget tests independent of when they run.
-	c.budget.now = fixedClock(time.Date(2026, 10, 26, 12, 27, 30, 0, time.UTC))
+	c.budget.Now = fixedClock(time.Date(2026, 10, 26, 12, 27, 30, 0, time.UTC))
 	return c
 }
 
@@ -190,51 +190,6 @@ func TestProviderRateLimitStopsRequestsForTheMinute(t *testing.T) {
 	}
 	if calls.Load() != 1 {
 		t.Fatalf("after a provider 429 no request should be sent until the minute ends; calls = %d", calls.Load())
-	}
-}
-
-// clock is a settable time source for budget tests.
-type clock struct{ t time.Time }
-
-func (c *clock) now() time.Time { return c.t }
-
-func TestBudgetCountsASlidingMinute(t *testing.T) {
-	// The sequence the provider rejected: 1 credit at :43, 7 at :54, then 1 at
-	// :01 of the next minute, still within 60 seconds of the first.
-	clk := &clock{t: time.Date(2026, 10, 26, 12, 30, 43, 0, time.UTC)}
-	b := newCreditBudget(8)
-	b.now = clk.now
-	b.reserve(1, 0)
-	clk.t = clk.t.Add(11 * time.Second)
-	if e, _ := b.reserve(7, 0); e == nil {
-		t.Fatal("7 credits should fit beside the first one")
-	}
-
-	clk.t = clk.t.Add(7 * time.Second)
-	if e, wait := b.reserve(1, 10*time.Second); e != nil {
-		t.Fatalf("a 9th credit within 60s must not be booked (wait %s)", wait)
-	}
-	// It becomes available once the :43 credit is a minute old (plus margin).
-	wantWait := 60*time.Second + windowMargin - 18*time.Second
-	if e, wait := b.reserve(1, time.Minute); e == nil || wait != wantWait {
-		t.Fatalf("got wait %s, want %s", wait, wantWait)
-	}
-}
-
-func TestBudgetReleaseAndExhaust(t *testing.T) {
-	clk := &clock{t: time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)}
-	b := newCreditBudget(8)
-	b.now = clk.now
-	e, _ := b.reserve(8, 0)
-	b.release(e)
-	if e, _ := b.reserve(8, 0); e == nil {
-		t.Fatal("released credits should be bookable again")
-	}
-
-	clk.t = clk.t.Add(2 * time.Minute)
-	b.exhaust()
-	if e, _ := b.reserve(1, 30*time.Second); e != nil {
-		t.Fatal("after exhaust no credit should be available within the window")
 	}
 }
 
