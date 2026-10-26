@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+/*
+ * Mallowtick design tokens (see docs/design-reference.png).
+ * Every color in components comes from here, as Tailwind utilities
+ * (bg-mint, text-ink, …) or as CSS variables (var(--color-mint)) for
+ * canvas-based charts.
+ */
+@theme {
+  /* Brand palette */
+  --color-mint: #a7e3c2;
+  --color-mint-soft: #e3f6eb;
+  --color-mint-deep: #237a57;
+  --color-sky: #bfe8ff;
+  --color-sky-soft: #e6f4ff;
+  --color-cream: #fff9f0;
+  --color-cream-deep: #fbefdd;
+  --color-accent: #ffb6c1;
+  --color-accent-soft: #ffe8ec;
+  --color-peach: #f3d9c0;
+
+  /* Text */
+  --color-ink: #24403d;
+  --color-slate: #6b7280;
+  --color-slate-strong: #5b6472;
+
+  /* Surfaces */
+  --color-surface: #ffffff;
+  --color-line: #efe7da;
+
+  /* Market semantics (AA contrast on white and cream) */
+  --color-up: #187a50;
+  --color-up-soft: #e3f6eb;
+  --color-down: #c2374f;
+  --color-down-soft: #ffe8ec;
+  --color-support: #2f9c6f;
+  --color-resistance: #e0627a;
+  --color-volume: #c9d7e3;
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --font-display:
+    ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+
+  --radius-card: 1.25rem;
+  --shadow-soft: 0 1px 2px rgb(36 64 61 / 0.04), 0 6px 20px rgb(36 64 61 / 0.06);
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --nav-height: 4rem;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background-color: var(--color-cream);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-mint-deep);
+    outline-offset: 2px;
+  }
+
+  input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+@utility pb-nav {
+  padding-bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + 1rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
