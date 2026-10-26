@@ -2,6 +2,10 @@
 
 US stock analysis app (PWA, iOS add-to-home-screen). Tagline: "Small Charts. Big dreams."
 
+Monorepo: `apps/web` (Next.js, pnpm) and `services/api` (Go/Gin). See README.md and docs/.
+Checks: `make test`, `make lint`, `make build`. Never add mock or placeholder market data;
+missing credentials must surface as "provider not configured".
+
 ## Design reference — read before any UI work
 
 Before creating or changing any UI (screens, components, styles, icons, colors), open
