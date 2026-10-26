@@ -124,6 +124,20 @@ export function useCandles(symbol: string, range: ChartRange) {
   });
 }
 
+/**
+ * The next scheduled earnings report. Optional data: without a vendor that
+ * publishes a calendar the request fails, and the UI simply shows nothing.
+ */
+export function useEarnings(symbol: string) {
+  return useQuery({
+    queryKey: ["earnings", symbol] as const,
+    queryFn: ({ signal }) => endpoints.earnings(symbol, signal),
+    staleTime: 6 * 60 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
 export function useLevels(symbol: string, range: ChartRange) {
   return useQuery({
     queryKey: queryKeys.levels(symbol, range),

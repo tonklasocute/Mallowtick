@@ -141,10 +141,38 @@ export interface MarketStatus {
   freshness: Freshness;
 }
 
+/** Kinds of market data; each may come from a different vendor. */
+export type DataKind = "quotes" | "search" | "candles" | "status" | "earnings";
+
 export interface Health {
   status: string;
-  provider: { name: string; configured: boolean; latency: Latency };
+  provider: {
+    name: string;
+    configured: boolean;
+    latency: Latency;
+    /** The vendor behind each kind of data; "earnings" is absent when no vendor has a calendar. */
+    sources?: Partial<Record<DataKind, { name: string; configured: boolean }>>;
+  };
   time: string;
+}
+
+export interface EarningsEvent {
+  symbol: string;
+  /** Report date, YYYY-MM-DD, in US market time. */
+  date: string;
+  /** "bmo" before the open, "amc" after the close, "dmh" during the session, "" when not announced. */
+  hour: string;
+  quarter?: number;
+  year?: number;
+  epsEstimate: number | null;
+  revenueEstimate: number | null;
+}
+
+export interface EarningsResult {
+  symbol: string;
+  /** Null when no report is scheduled within the vendor's calendar. */
+  next: EarningsEvent | null;
+  freshness: Freshness;
 }
 
 export type ApiErrorCode =

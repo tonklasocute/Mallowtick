@@ -25,7 +25,19 @@ type Config struct {
 	RequestTimeout  time.Duration
 	ShutdownTimeout time.Duration
 	TwelveData      TwelveData
+	Finnhub         Finnhub
 	Market          Market
+}
+
+// Finnhub configures the optional Finnhub adapter. With an APIKey it serves
+// quotes, search and the earnings calendar; Twelve Data keeps candles and
+// market status, which Finnhub's free plan lacks.
+type Finnhub struct {
+	APIKey         string
+	BaseURL        string
+	CallsPerMinute int
+	MaxWait        time.Duration
+	Timeout        time.Duration
 }
 
 // TwelveData configures the Twelve Data adapter. An empty APIKey leaves the
@@ -116,6 +128,13 @@ func Load(lookup LookupFunc) (Config, error) {
 			CreditsPerMinute: l.positiveInt("TWELVEDATA_CREDITS_PER_MINUTE", 8),
 			MaxWait:          l.duration("TWELVEDATA_MAX_WAIT", 10*time.Second),
 			Timeout:          l.duration("TWELVEDATA_TIMEOUT", 10*time.Second),
+		},
+		Finnhub: Finnhub{
+			APIKey:         l.str("FINNHUB_API_KEY", ""),
+			BaseURL:        l.str("FINNHUB_BASE_URL", "https://finnhub.io/api/v1"),
+			CallsPerMinute: l.positiveInt("FINNHUB_CALLS_PER_MINUTE", 60),
+			MaxWait:        l.duration("FINNHUB_MAX_WAIT", 5*time.Second),
+			Timeout:        l.duration("FINNHUB_TIMEOUT", 10*time.Second),
 		},
 		Market: Market{
 			QuoteTTL:        l.duration("QUOTE_CACHE_TTL", 60*time.Second),

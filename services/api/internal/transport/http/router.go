@@ -24,6 +24,7 @@ type MarketService interface {
 	Levels(ctx context.Context, symbol market.Symbol, rng market.Range) (market.LevelsResult, error)
 	MarketStatus(ctx context.Context) (market.StatusResult, error)
 	Overview(ctx context.Context) (market.Overview, error)
+	NextEarnings(ctx context.Context, symbol market.Symbol) (market.EarningsResult, error)
 }
 
 // Options configures the router.
@@ -67,6 +68,7 @@ func NewRouter(opts Options) http.Handler {
 	v1.GET("/stocks/:symbol/quote", h.quote)
 	v1.GET("/stocks/:symbol/candles", h.candles)
 	v1.GET("/stocks/:symbol/levels", h.levels)
+	v1.GET("/stocks/:symbol/earnings", h.earnings)
 	return r
 }
 
@@ -190,6 +192,19 @@ func (h *handlers) levels(c *gin.Context) {
 		return
 	}
 	res, err := h.svc.Levels(c.Request.Context(), sym, rng)
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	ok(c, res)
+}
+
+func (h *handlers) earnings(c *gin.Context) {
+	sym, valid := h.symbolParam(c)
+	if !valid {
+		return
+	}
+	res, err := h.svc.NextEarnings(c.Request.Context(), sym)
 	if err != nil {
 		fail(c, h.log, err)
 		return

@@ -55,9 +55,24 @@ and keep it inside the budget in [docs/market-data.md](docs/market-data.md#credi
 (server cache first, fetch only what is on screen).
 
 Twelve Data counts credits in a **sliding 60-second window**, verified with the real API on
-2026-10-26. Don't swap `twelvedata/budget.go` for a token bucket or a per-calendar-minute
+2026-10-26. Don't swap `internal/ratebudget` for a token bucket or a per-calendar-minute
 counter: both let a 9th credit through, and the provider returns 429. To see real usage, run
 the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
+
+## Market data vendors
+
+- With `FINNHUB_API_KEY` set, **Finnhub** serves quotes, search and the earnings calendar
+  (60 calls/min, per-call budget in `internal/ratebudget`), and **Twelve Data** keeps
+  candles and market status (`market.Composite`, wired in `cmd/api/main.go`). Without it,
+  Twelve Data serves everything.
+- Tested with real keys on 2026-10-26. Finnhub's free plan has **no candles** (403) and
+  **no past earnings dates** (empty list), and its quotes have no volume, name or market
+  state. Don't plan features on those.
+- Freshness and `/health` name the vendor per kind of data (`Service.source(kind)`). Keep
+  that when adding a data kind; never label one vendor's data with another's name.
+- Never sum Twelve Data free-plan intraday volumes. They cover only part of the market
+  (about 50k shares in AAPL's first 5-minute bar), so totals are far too low. Session
+  volume comes from the final daily bar after the close, or stays unknown.
 
 ## Price chart
 
@@ -66,8 +81,9 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   `warmup` + `candles`; chart layer toggles and periods are saved per device
   (`features/stock-detail/chart-prefs.ts`).
 - The chart card follows a cute pastel mock: pastel candles, prices as pills beside the
-  plot instead of a price axis, dashed pink/mint levels. No earnings markers or chip until
-  there is a real earnings data source.
+  plot instead of a price axis, dashed pink/mint levels. There are no earnings markers on
+  the chart, since no vendor here provides past report dates. The next report is shown as a
+  badge under the price instead (`features/stock-detail/earnings-badge.tsx`, from Finnhub).
 - The chart shows **no TradingView logo** (`attributionLogo: false`, the user's decision).
   The licence allows that only because More → About shows the NOTICE text and a link to
   https://www.tradingview.com/. Keep that credit when editing the More screen.
@@ -97,8 +113,8 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   environment; `go run` alone does not load `services/api/.env` (`make dev-api` does, through
   bash). Without a key it runs with the provider not configured. `go run` does not
   hot-reload; restart after Go changes.
-- `services/api/.env` holds the real Twelve Data key. It is gitignored; never commit it or
-  print it in logs or output.
+- `services/api/.env` holds the real Twelve Data and Finnhub keys. It is gitignored; never
+  commit it or print it in logs or output. With Finnhub quotes it uses `QUOTE_CACHE_TTL=60s`.
 - Git Bash `sed -i` converts CRLF files to LF. Edit with the Edit tool or `perl -pi` instead.
 
 ## Known issues
@@ -111,3 +127,9 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   Convert with `tr -d '\r'` after copying.
 - `gofmt -l .` lists every Go file for the same CRLF reason. To check a file:
   `tr -d '\r' < file.go | gofmt -d`.
+- Unverified: whether Twelve Data's daily bar for today holds the full-market volume right
+  after the close. During the session it holds the same partial volume as the intraday
+  bars, and closed-market candles are cached until the next open. If Stock Detail shows a
+  very low "ปริมาณซื้อขาย" in the evening, that is why. Check once after a close.
+- ETF names from Finnhub search are upper case with a vendor prefix (e.g. "SS SPDR S&P
+  500 ETF TRUST"), because Finnhub has no profile for ETFs.

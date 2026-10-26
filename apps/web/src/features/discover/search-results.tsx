@@ -68,8 +68,7 @@ export function SearchResults({ query, pending }: { query: string; pending: bool
               <span className="min-w-0">
                 <span className="block font-display font-semibold text-ink">{r.symbol}</span>
                 <span className="block truncate text-xs text-slate">
-                  {r.name} · {r.exchange}
-                  {r.type ? ` · ${r.type}` : ""}
+                  {[r.name, r.exchange, r.type].filter(Boolean).join(" · ")}
                 </span>
               </span>
             </Link>

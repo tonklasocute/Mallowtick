@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/tonklasocute/mallowtick/services/api/internal/market"
+	"github.com/tonklasocute/mallowtick/services/api/internal/ratebudget"
 )
 
 // ProviderName identifies this adapter in responses and logs.
@@ -44,7 +45,7 @@ type Client struct {
 	apiKey  string
 	baseURL *url.URL
 	http    *http.Client
-	budget  *creditBudget
+	budget  *ratebudget.Budget
 	burst   int
 	maxWait time.Duration
 	log     *slog.Logger
@@ -74,7 +75,7 @@ func New(cfg Config) (*Client, error) {
 		apiKey:  cfg.APIKey,
 		baseURL: base,
 		http:    cfg.HTTPClient,
-		budget:  newCreditBudget(cfg.CreditsPerMinute),
+		budget:  ratebudget.New(cfg.CreditsPerMinute, time.Minute),
 		burst:   cfg.CreditsPerMinute,
 		maxWait: cfg.MaxWait,
 		log:     cfg.Logger,
@@ -139,7 +140,7 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, credit
 	}
 	if errors.Is(err, market.ErrRateLimited) {
 		// Stop sending requests the provider would refuse.
-		c.budget.exhaust()
+		c.budget.Exhaust()
 	}
 	return nil, err
 }
@@ -147,24 +148,11 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, credit
 // spend books credits in the per-minute budget, failing fast with
 // ErrRateLimited instead of queueing requests for longer than maxWait.
 func (c *Client) spend(ctx context.Context, credits int) error {
-	if credits > c.burst {
-		return fmt.Errorf("%w: request needs %d credits but the plan allows %d per minute", market.ErrRateLimited, credits, c.burst)
+	err := c.budget.Spend(ctx, credits, c.maxWait)
+	if errors.Is(err, ratebudget.ErrNoRoom) {
+		return fmt.Errorf("%w: %w", market.ErrRateLimited, err)
 	}
-	b, delay := c.budget.reserve(credits, c.maxWait)
-	if b == nil {
-		return fmt.Errorf("%w: next credits available in %s", market.ErrRateLimited, delay.Round(time.Second))
-	}
-	if delay > 0 {
-		t := time.NewTimer(delay)
-		defer t.Stop()
-		select {
-		case <-t.C:
-		case <-ctx.Done():
-			c.budget.release(b)
-			return ctx.Err()
-		}
-	}
-	return nil
+	return err
 }
 
 func mapError(code int, message string) error {
