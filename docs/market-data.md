@@ -18,6 +18,29 @@ Evaluated October 2026 against the published pricing pages (twelvedata.com/prici
 
 **Licensing caveat:** neither provider's personal plans grant redistribution or public display rights. Running Mallowtick for yourself is in scope; serving it publicly to other people needs a commercial licence from the provider. This is a business decision outside the code.
 
+## Optional second vendor: Finnhub for quotes
+
+With `FINNHUB_API_KEY` set, the API combines two vendors (`market.Composite`):
+
+| Data | Vendor | Why |
+|---|---|---|
+| Quotes, symbol search, earnings calendar | **Finnhub** | Free plan allows 60 calls/min (vs Twelve Data's 8 credits/min charged per symbol), so quotes can refresh every minute. It also has an earnings calendar. |
+| Candles, market status | **Twelve Data** | Finnhub's free plan has no historical candles (checked 2026-10-26: `/stock/candle` answers 403 for daily and 5-minute bars). Its market status also has no countdown to the next open or close. |
+
+Without the key, Twelve Data serves everything as before. Freshness metadata and `/health` (`provider.sources`) name the vendor behind each kind of data.
+
+What the Finnhub free plan gives, as checked with a real key on 2026-10-26:
+
+- **`/quote`:** price, change, open/high/low, previous close and time, one symbol per call, ETFs and `BRK.B` included. No volume, no name, no market state. Unknown symbols return all zeros and are treated as not found.
+- **`/stock/profile2`:** name, exchange and currency for stocks, cached for 24h. It is empty for ETFs, so their name comes from an exact `/search` match with the "-US" suffix dropped (e.g. "SS SPDR S&P 500 ETF TRUST").
+- **`/stock/metric`:** the 52-week range, cached for 24h and fetched only for single-symbol quotes (Stock Detail).
+- **`/calendar/earnings`:** upcoming reports only. A past date range returns an empty list, so past earnings markers on the chart are not possible on this plan.
+
+The service fills in what Finnhub quotes lack:
+
+- **Market state:** taken from the cached Twelve Data market status, so labels and closed-market cache lifetimes still work.
+- **Volume:** taken from the session's daily bar only after the close, once that bar is final. During the session it stays unknown (shown as "—"). Twelve Data's free-plan intraday volumes cover only part of the market (AAPL's first 5-minute bar showed about 50k shares), so summing them would be badly wrong. The same partial volumes appear in the 1D/1W chart's volume bars, which are useful for shape only.
+
 ## What is (and isn't) used
 
 | Need | Twelve Data endpoint | Credits |

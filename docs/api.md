@@ -60,8 +60,13 @@ Each range is fetched with up to 900 earlier warm-up bars in the same provider r
 Liveness and provider configuration. Always 200 while the server runs.
 
 ```json
-{ "data": { "status": "ok", "time": "…", "provider": { "name": "twelvedata", "configured": true, "latency": "unknown" } } }
+{ "data": { "status": "ok", "time": "…", "provider": { "name": "finnhub+twelvedata", "configured": true, "latency": "unknown",
+  "sources": { "quotes": { "name": "finnhub", "configured": true }, "search": { "name": "finnhub", "configured": true },
+    "candles": { "name": "twelvedata", "configured": true }, "status": { "name": "twelvedata", "configured": true },
+    "earnings": { "name": "finnhub", "configured": true } } } } }
 ```
+
+`sources` names the vendor behind each kind of data. With Twelve Data alone every entry is `twelvedata`, and `earnings` is absent.
 
 ### `GET /market/status`
 
@@ -110,7 +115,18 @@ Instrument metadata (same shape as a search result). Cached for 24h.
 }
 ```
 
-Fields the provider didn't report are `null`.
+Fields the provider didn't report are `null`. With Finnhub quotes, `exchange` is empty for ETFs, `volume` is filled in only after the close (from the session's daily bar), and `fiftyTwoWeek` is looked up for this single-symbol endpoint only (batch quotes leave it `null`).
+
+### `GET /stocks/{symbol}/earnings`
+
+The next scheduled earnings report, from a vendor with an earnings calendar (Finnhub). `next` is `null` when nothing is scheduled in the next 90 days. Fails with `provider_not_configured` when no configured vendor publishes a calendar. Cached for 12h.
+
+```json
+{ "data": { "symbol": "AAPL", "next": { "symbol": "AAPL", "date": "2026-11-02", "hour": "amc", "quarter": 4, "year": 2026,
+  "epsEstimate": 2.0221, "revenueEstimate": 115496910249 }, "freshness": { "provider": "finnhub", … } } }
+```
+
+`hour` is `bmo` (before the open), `amc` (after the close), `dmh` (during the session), or empty.
 
 ### `GET /stocks/{symbol}/candles?range=1d&warmup=true`
 
