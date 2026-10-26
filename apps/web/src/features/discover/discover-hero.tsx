@@ -25,7 +25,7 @@ export function DiscoverHero() {
             {BRAND.tagline}
           </h2>
           <p className="text-sm text-slate-strong">
-            Search US stocks, check the market, and keep your favorites close.
+            ค้นหาหุ้นสหรัฐฯ ดูภาพรวมตลาด และเก็บหุ้นที่สนใจไว้ใกล้ ๆ ตัว
           </p>
           <MarketStatusPill />
         </div>

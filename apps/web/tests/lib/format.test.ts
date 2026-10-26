@@ -51,9 +51,9 @@ describe("format", () => {
   });
 
   it("formats countdowns", () => {
-    expect(formatDuration(16_044)).toBe("4h 27m");
-    expect(formatDuration(62 * 3600)).toBe("2d 14h");
-    expect(formatDuration(30)).toBe("1m");
+    expect(formatDuration(16_044)).toBe("4 ชม. 27 นาที");
+    expect(formatDuration(62 * 3600)).toBe("2 วัน 14 ชม.");
+    expect(formatDuration(30)).toBe("1 นาที");
     expect(formatDuration(null)).toBe(EMPTY);
   });
 });

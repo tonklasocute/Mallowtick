@@ -99,7 +99,7 @@ export function UnavailableBenchmarkTile({ item }: { item: UnavailableItem }) {
       <p className="font-display text-sm font-semibold text-slate-strong">{item.symbol}</p>
       <p className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-slate-strong">
         <CircleSlash aria-hidden className="size-3.5" />
-        Unavailable
+        ไม่มีข้อมูล
       </p>
       <p className="text-[11px] text-slate">{item.label}</p>
     </Card>

@@ -23,7 +23,7 @@ function OverviewSkeleton() {
   return (
     <div
       aria-busy="true"
-      aria-label="Loading market overview"
+      aria-label="กำลังโหลดภาพรวมตลาด"
       className="grid grid-cols-1 gap-5 lg:grid-cols-5"
     >
       <div className="space-y-3 lg:col-span-3">
@@ -56,8 +56,8 @@ export function MarketOverview() {
     return (
       <Card>
         <StateMessage
-          title="Search to get started"
-          description="No benchmark or popular symbols are configured on the API server (MARKET_OVERVIEW_SYMBOLS, POPULAR_SYMBOLS)."
+          title="เริ่มต้นด้วยการค้นหาหุ้น"
+          description="เซิร์ฟเวอร์ API ยังไม่ได้ตั้งค่าดัชนีอ้างอิงหรือหุ้นยอดนิยม (MARKET_OVERVIEW_SYMBOLS, POPULAR_SYMBOLS)"
         />
       </Card>
     );
@@ -71,7 +71,7 @@ export function MarketOverview() {
           aria-labelledby="benchmarks-title"
           className={cn("space-y-3", m.showPopular ? "lg:col-span-3" : "lg:col-span-5")}
         >
-          <SectionTitle id="benchmarks-title">Market benchmarks</SectionTitle>
+          <SectionTitle id="benchmarks-title">ดัชนีอ้างอิงตลาด</SectionTitle>
           {m.hero && <BenchmarkHeroCard quote={m.hero} receivedAt={dataUpdatedAt} />}
           {tileCount > 0 && (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-2">
@@ -98,14 +98,14 @@ export function MarketOverview() {
 
       {m.unavailableOther.length > 0 && (
         <p role="status" className="text-xs text-slate lg:col-span-5">
-          Unavailable right now:{" "}
+          ยังไม่มีข้อมูลในขณะนี้:{" "}
           {m.unavailableOther.map((u) => `${u.symbol} (${u.label})`).join(", ")}
         </p>
       )}
 
       {error && (
         <p role="status" className="text-xs text-slate lg:col-span-5">
-          Couldn&apos;t refresh just now — showing the last loaded data with its timestamps.
+          รีเฟรชข้อมูลไม่สำเร็จ กำลังแสดงข้อมูลชุดล่าสุดที่โหลดไว้พร้อมเวลาของข้อมูล
         </p>
       )}
     </div>

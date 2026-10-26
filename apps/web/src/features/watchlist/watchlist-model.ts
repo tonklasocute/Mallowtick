@@ -16,7 +16,7 @@ export function sanitizeSymbols(input: unknown): string[] {
 
 export class WatchlistFullError extends Error {
   constructor() {
-    super(`A watchlist can hold up to ${MAX_WATCHLIST_SYMBOLS} symbols.`);
+    super(`เก็บหุ้นที่สนใจได้สูงสุด ${MAX_WATCHLIST_SYMBOLS} ตัว`);
     this.name = "WatchlistFullError";
   }
 }

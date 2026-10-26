@@ -88,15 +88,15 @@ export function formatMarketDate(iso: string | null | undefined): string {
   });
 }
 
-/** "2h 15m" from seconds; used for market open/close countdowns. */
+/** "2 ชม. 15 นาที" from seconds; used for market open/close countdowns. */
 export function formatDuration(seconds: number | null | undefined): string {
   if (!isNum(seconds) || seconds <= 0) return EMPTY;
   const d = Math.floor(seconds / 86_400);
   const h = Math.floor((seconds % 86_400) / 3600);
   const m = Math.floor((seconds % 3600) / 60);
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${Math.max(m, 1)}m`;
+  if (d > 0) return `${d} วัน ${h} ชม.`;
+  if (h > 0) return `${h} ชม. ${m} นาที`;
+  return `${Math.max(m, 1)} นาที`;
 }
 
 /** Bar timestamp label: date only for daily/weekly bars, which have no meaningful time of day. */

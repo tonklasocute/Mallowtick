@@ -16,8 +16,8 @@ const base: FreshnessInput = {
 describe("describeFreshness", () => {
   it("labels declared real-time data as real-time with its provider timestamp", () => {
     const info = describeFreshness(base);
-    expect(info).toMatchObject({ kind: "live", label: "Real-time", time: "2:59 PM ET" });
-    expect(info.detail).toContain("as of 2:59 PM ET");
+    expect(info).toMatchObject({ kind: "live", label: "เรียลไทม์", time: "2:59 PM ET" });
+    expect(info.detail).toContain("ณ 2:59 PM ET");
   });
 
   it("never claims real-time unless the latency is declared", () => {
@@ -28,14 +28,14 @@ describe("describeFreshness", () => {
       describeFreshness({ ...base, freshness: freshness({ latency: "unknown" }) }),
     ).toMatchObject({
       kind: "unknown",
-      label: "Latency not declared",
+      label: "ไม่ระบุความล่าช้า",
     });
   });
 
   it("marks server fallbacks as stale", () => {
     const info = describeFreshness({ ...base, freshness: freshness({ stale: true }) });
     expect(info.kind).toBe("stale");
-    expect(info.detail).toMatch(/Provider unavailable/);
+    expect(info.detail).toMatch(/ผู้ให้บริการไม่พร้อมใช้งาน/);
   });
 
   it("marks data the client has not refreshed as stale", () => {
@@ -46,7 +46,7 @@ describe("describeFreshness", () => {
   it("marks everything stale while offline", () => {
     expect(describeFreshness({ ...base, online: false })).toMatchObject({
       kind: "stale",
-      label: "Offline",
+      label: "ออฟไลน์",
     });
   });
 
@@ -54,14 +54,14 @@ describe("describeFreshness", () => {
     const info = describeFreshness({ ...base, isMarketOpen: false });
     expect(info).toMatchObject({
       kind: "closed",
-      label: "Market closed",
-      detail: "Last update 2:59 PM ET",
+      label: "ตลาดปิด",
+      detail: "อัปเดตล่าสุด 2:59 PM ET",
     });
   });
 
   it("does not invent a timestamp when the provider sent none", () => {
     const info = describeFreshness({ ...base, freshness: freshness({ asOf: null }) });
-    expect(info.detail).toContain("update time not reported");
-    expect(info.time).toBe("time n/a");
+    expect(info.detail).toContain("ไม่ได้ระบุเวลาอัปเดต");
+    expect(info.time).toBe("ไม่ระบุเวลา");
   });
 });

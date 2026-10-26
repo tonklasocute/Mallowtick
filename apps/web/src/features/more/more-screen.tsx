@@ -17,10 +17,10 @@ import { useHealth } from "@/services/api/queries";
 import type { Latency } from "@/types/api";
 
 const LATENCY_COPY: Record<Latency, string> = {
-  realtime: "Real-time (as declared for the configured plan)",
-  delayed: "Delayed",
-  eod: "End of day",
-  unknown: "Not declared — prices are labelled with their timestamps only",
+  realtime: "เรียลไทม์ (ตามที่ระบุไว้สำหรับแพ็กเกจที่ตั้งค่า)",
+  delayed: "ล่าช้า",
+  eod: "ราคาปิดสิ้นวัน",
+  unknown: "ไม่ได้ระบุ — ราคาจะแสดงพร้อมเวลาของข้อมูลเท่านั้น",
 };
 
 function subscribeDisplayMode(onChange: () => void) {
@@ -62,28 +62,28 @@ function Section({
 function ProviderStatus() {
   const { data, error, isPending } = useHealth();
   if (isPending) return <Skeleton className="h-10 w-full" />;
-  if (!data) return <p>{errorCopy(error).title}.</p>;
+  if (!data) return <p>{errorCopy(error).title}</p>;
   const { provider } = data;
   return (
     <dl className="space-y-1.5">
       <div className="flex justify-between gap-3">
-        <dt>Provider</dt>
+        <dt>ผู้ให้บริการ</dt>
         <dd className="font-semibold text-ink">
           {provider.name === "twelvedata" ? "Twelve Data" : provider.name}
         </dd>
       </div>
       <div className="flex justify-between gap-3">
-        <dt>Status</dt>
+        <dt>สถานะ</dt>
         <dd>
           {provider.configured ? (
-            <Badge tone="mint">Configured</Badge>
+            <Badge tone="mint">ตั้งค่าแล้ว</Badge>
           ) : (
-            <Badge tone="accent">Not configured</Badge>
+            <Badge tone="accent">ยังไม่ได้ตั้งค่า</Badge>
           )}
         </dd>
       </div>
       <div className="flex justify-between gap-3">
-        <dt>Data latency</dt>
+        <dt>ความล่าช้าของข้อมูล</dt>
         <dd className="text-right font-semibold text-ink">{LATENCY_COPY[provider.latency]}</dd>
       </div>
     </dl>
@@ -95,33 +95,36 @@ export function MoreScreen() {
   const standalone = useIsStandalone();
   return (
     <PageContainer>
-      <PageHeader title="More" />
+      <PageHeader title="เพิ่มเติม" />
       <main className="pb-nav space-y-4 px-4">
-        <Section icon={<Database aria-hidden className="size-5" />} title="Market data">
+        <Section icon={<Database aria-hidden className="size-5" />} title="ข้อมูลตลาด">
           <ProviderStatus />
           <p className="text-xs text-slate">
-            Quotes refresh while a screen is open. Every price shows its provider timestamp; cached
-            or offline data is marked stale and never shown as live.
+            ราคาจะอัปเดตอัตโนมัติขณะเปิดหน้าจออยู่ ทุกราคาแสดงเวลาจากผู้ให้บริการ
+            ข้อมูลที่แคชไว้หรือขณะออฟไลน์จะถูกระบุว่าเป็นข้อมูลเก่า และจะไม่แสดงเป็นราคาล่าสุด
           </p>
         </Section>
 
-        <Section icon={<Smartphone aria-hidden className="size-5" />} title="Watchlist storage">
+        <Section
+          icon={<Smartphone aria-hidden className="size-5" />}
+          title="ที่เก็บรายการหุ้นที่สนใจ"
+        >
           <p>{repo.storageDescription}</p>
         </Section>
 
-        <Section icon={<Download aria-hidden className="size-5" />} title="Install on iPhone">
+        <Section icon={<Download aria-hidden className="size-5" />} title="ติดตั้งบน iPhone">
           {standalone ? (
-            <p>Mallowtick is installed on this device. 🎉</p>
+            <p>ติดตั้ง Mallowtick บนอุปกรณ์นี้แล้ว 🎉</p>
           ) : (
             <ol className="list-decimal space-y-1 pl-5">
-              <li>Open Mallowtick in Safari.</li>
-              <li>Tap the Share button.</li>
-              <li>Choose “Add to Home Screen”.</li>
+              <li>เปิด Mallowtick ใน Safari</li>
+              <li>แตะปุ่มแชร์</li>
+              <li>เลือก “เพิ่มไปยังหน้าจอโฮม”</li>
             </ol>
           )}
         </Section>
 
-        <Section icon={<Info aria-hidden className="size-5" />} title="About">
+        <Section icon={<Info aria-hidden className="size-5" />} title="เกี่ยวกับ">
           <div className="flex items-center gap-3">
             <Mascot size={44} />
             <div>
@@ -130,9 +133,9 @@ export function MoreScreen() {
             </div>
           </div>
           <p className="text-xs text-slate">
-            For information only, not investment advice. Support and resistance levels are
-            calculated estimates and do not predict future prices. Market data by Twelve Data.
-            Charts by TradingView Lightweight Charts™.
+            ใช้เป็นข้อมูลประกอบเท่านั้น ไม่ใช่คำแนะนำการลงทุน
+            แนวรับและแนวต้านเป็นค่าประมาณจากการคำนวณ และไม่ได้คาดการณ์ราคาในอนาคต ข้อมูลตลาดโดย
+            Twelve Data กราฟโดย TradingView Lightweight Charts™
           </p>
         </Section>
       </main>

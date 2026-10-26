@@ -16,7 +16,7 @@ export function PopularStocks({ quotes, unavailable, receivedAt }: PopularStocks
   return (
     <Card aria-labelledby="popular-title" className="px-3 pb-2">
       <CardTitle id="popular-title" className="px-1">
-        Popular stocks
+        หุ้นยอดนิยม
       </CardTitle>
       <ul className="mt-1 divide-y divide-line">
         {quotes.map((q) => (

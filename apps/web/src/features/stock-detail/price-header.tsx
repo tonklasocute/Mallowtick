@@ -19,7 +19,7 @@ export function PriceHeader({
 
   if (isPending) {
     return (
-      <div aria-busy="true" aria-label="Loading quote" className="flex items-center gap-3">
+      <div aria-busy="true" aria-label="กำลังโหลดราคา" className="flex items-center gap-3">
         <SymbolAvatar symbol={symbol} size="lg" />
         <div className="space-y-2">
           <Skeleton className="h-4 w-32" />
@@ -31,7 +31,7 @@ export function PriceHeader({
   if (!quote) return <ApiErrorState error={error} onRetry={() => void refetch()} />;
 
   return (
-    <section aria-label={`${symbol} price`} className="space-y-2">
+    <section aria-label={`ราคา ${symbol}`} className="space-y-2">
       <div className="flex items-center gap-3">
         <SymbolAvatar symbol={symbol} size="lg" />
         <div className="min-w-0">

@@ -24,12 +24,14 @@ export const RANGE_LABELS: Record<ChartRange, string> = {
 };
 
 const INTERVAL_LABELS: Record<string, string> = {
-  "5min": "5-minute",
-  "30min": "30-minute",
-  "1h": "hourly",
-  "1day": "daily",
-  "1week": "weekly",
+  "5min": "5 นาที",
+  "30min": "30 นาที",
+  "1h": "1 ชั่วโมง",
+  "1day": "รายวัน",
+  "1week": "รายสัปดาห์",
 };
+
+export const intervalLabel = (interval: string) => INTERVAL_LABELS[interval] ?? interval;
 
 const CHART_HEIGHT = 280;
 
@@ -53,8 +55,8 @@ export function ChartPanel({ range, onRangeChange, candles, levels }: ChartPanel
     body = (
       <StateMessage
         compact
-        title="No price history for this range"
-        description="The provider returned no candles. Try another range."
+        title="ไม่มีประวัติราคาในช่วงนี้"
+        description="ผู้ให้บริการไม่ได้ส่งข้อมูลแท่งเทียนมา ลองเลือกช่วงเวลาอื่น"
       />
     );
   } else {
@@ -72,7 +74,7 @@ export function ChartPanel({ range, onRangeChange, candles, levels }: ChartPanel
   return (
     <Card className="space-y-3 px-3">
       <SegmentedControl
-        label="Chart range"
+        label="ช่วงเวลาของกราฟ"
         options={options}
         value={range}
         onChange={onRangeChange}
@@ -84,7 +86,7 @@ export function ChartPanel({ range, onRangeChange, candles, levels }: ChartPanel
             role="status"
             className="absolute top-1 left-1 inline-flex items-center gap-1 rounded-full bg-surface/90 px-2 py-0.5 text-[11px] text-slate"
           >
-            <LoaderCircle aria-hidden className="size-3 animate-spin" /> Loading{" "}
+            <LoaderCircle aria-hidden className="size-3 animate-spin" /> กำลังโหลด{" "}
             {RANGE_LABELS[range]}…
           </span>
         )}
@@ -92,19 +94,19 @@ export function ChartPanel({ range, onRangeChange, candles, levels }: ChartPanel
       {data && last && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[11px] text-slate">
           <span>
-            {INTERVAL_LABELS[data.interval] ?? data.interval} candles · last bar{" "}
+            แท่งเทียน {intervalLabel(data.interval)} · แท่งล่าสุด{" "}
             {formatBarTime(last.time, data.interval)}
             {data.freshness.stale && (
-              <strong className="ml-1 text-down">· stale (provider unavailable)</strong>
+              <strong className="ml-1 text-down">· ข้อมูลเก่า (ผู้ให้บริการไม่พร้อมใช้งาน)</strong>
             )}
           </span>
           {levels.length > 0 && (
             <span className="inline-flex items-center gap-3" aria-hidden>
               <span className="inline-flex items-center gap-1">
-                <span className="w-4 border-t-2 border-dashed border-resistance" /> Resistance
+                <span className="w-4 border-t-2 border-dashed border-resistance" /> แนวต้าน
               </span>
               <span className="inline-flex items-center gap-1">
-                <span className="w-4 border-t-2 border-dashed border-support" /> Support
+                <span className="w-4 border-t-2 border-dashed border-support" /> แนวรับ
               </span>
             </span>
           )}

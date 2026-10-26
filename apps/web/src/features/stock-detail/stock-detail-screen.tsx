@@ -37,7 +37,7 @@ export function StockDetailScreen({ symbol }: { symbol: string }) {
       <PageHeader
         leading={
           <IconButton
-            label="Back"
+            label="ย้อนกลับ"
             onClick={() => (window.history.length > 1 ? router.back() : router.push("/"))}
           >
             <ChevronLeft aria-hidden className="size-6" />
@@ -57,8 +57,8 @@ export function StockDetailScreen({ symbol }: { symbol: string }) {
         <KeyLevels range={range} query={levelsQuery} levels={levels} />
         {quote.data && <QuoteStats quote={quote.data} />}
         <p className="px-1 text-[11px] leading-relaxed text-slate">
-          For information only, not investment advice. Prices come from the configured market-data
-          provider; levels are Mallowtick calculations.
+          ใช้เป็นข้อมูลประกอบเท่านั้น ไม่ใช่คำแนะนำการลงทุน
+          ราคามาจากผู้ให้บริการข้อมูลตลาดที่ตั้งค่าไว้ ส่วนแนวรับ-แนวต้านคำนวณโดย Mallowtick
         </p>
       </main>
     </PageContainer>

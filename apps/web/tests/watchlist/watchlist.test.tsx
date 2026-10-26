@@ -28,18 +28,18 @@ describe("WatchlistToggle", () => {
     const repository = new MemoryWatchlistRepository();
     renderWithProviders(<WatchlistToggle symbol="AAPL" />, { repository });
 
-    const button = await screen.findByRole("button", { name: "Add AAPL to watchlist" });
+    const button = await screen.findByRole("button", { name: "เพิ่ม AAPL ในหุ้นที่สนใจ" });
     await waitFor(() => expect(button).toBeEnabled());
     expect(button).toHaveAttribute("aria-pressed", "false");
 
     await userEvent.click(button);
-    expect(screen.getByRole("button", { name: "Remove AAPL from watchlist" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "นำ AAPL ออกจากหุ้นที่สนใจ" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
     await waitFor(async () => expect(await repository.list()).toEqual(["AAPL"]));
 
-    await userEvent.click(screen.getByRole("button", { name: "Remove AAPL from watchlist" }));
+    await userEvent.click(screen.getByRole("button", { name: "นำ AAPL ออกจากหุ้นที่สนใจ" }));
     await waitFor(async () => expect(await repository.list()).toEqual([]));
   });
 });
@@ -48,12 +48,9 @@ describe("WatchlistScreen", () => {
   it("shows an empty state with a way to discover stocks", async () => {
     mockQuotes(() => ok({ quotes: [], unavailable: [] }));
     renderWithProviders(<WatchlistScreen />);
-    expect(await screen.findByText("Your watchlist is empty")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Discover stocks" })).toHaveAttribute(
-      "href",
-      "/#search",
-    );
-    expect(screen.getByText(/this device only|memory/i)).toBeInTheDocument();
+    expect(await screen.findByText("ยังไม่มีหุ้นที่สนใจ")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "สำรวจหุ้น" })).toHaveAttribute("href", "/#search");
+    expect(screen.getByText(/อุปกรณ์นี้เท่านั้น|หน่วยความจำ/)).toBeInTheDocument();
   });
 
   it("lists quotes, reports unavailable symbols, and removes in edit mode", async () => {
@@ -70,13 +67,13 @@ describe("WatchlistScreen", () => {
     expect(within(row).getByText("$189.32")).toBeInTheDocument();
     expect(within(row).getByText("+0.99%")).toBeInTheDocument();
     const missing = screen.getByRole("link", { name: /^ZZZZ/ }).closest("li")!;
-    expect(within(missing).getByText("Price unavailable")).toBeInTheDocument();
-    expect(within(missing).getByText("Symbol not found")).toBeInTheDocument();
+    expect(within(missing).getByText("ไม่มีข้อมูลราคา")).toBeInTheDocument();
+    expect(within(missing).getByText("ไม่พบหุ้นนี้")).toBeInTheDocument();
     expect(within(missing).queryByText(/\$/)).toBeNull();
     expect(row.querySelector("polyline")).toBeNull(); // no fabricated sparkline without candles
 
-    await userEvent.click(screen.getByRole("button", { name: "Edit watchlist" }));
-    await userEvent.click(screen.getByRole("button", { name: "Remove ZZZZ" }));
+    await userEvent.click(screen.getByRole("button", { name: "แก้ไขรายการ" }));
+    await userEvent.click(screen.getByRole("button", { name: "ลบ ZZZZ" }));
     await waitFor(async () => expect(await repository.list()).toEqual(["AAPL"]));
   });
 
@@ -85,7 +82,9 @@ describe("WatchlistScreen", () => {
     renderWithProviders(<WatchlistScreen />, {
       repository: new MemoryWatchlistRepository(["AAPL"]),
     });
-    expect(await screen.findByRole("alert")).toHaveTextContent("Data provider not configured");
-    expect(screen.getByText(/Price unavailable/)).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "ยังไม่ได้ตั้งค่าผู้ให้บริการข้อมูล",
+    );
+    expect(screen.getByText(/ไม่มีข้อมูลราคา/)).toBeInTheDocument();
   });
 });

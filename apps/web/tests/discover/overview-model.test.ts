@@ -30,10 +30,10 @@ describe("buildOverviewModel", () => {
     });
     expect(m.hero).toBeNull();
     expect(m.unavailableBenchmarks).toEqual([
-      { symbol: "SPY", code: "rate_limited", label: "Rate limit reached" },
+      { symbol: "SPY", code: "rate_limited", label: "เกินโควตาการเรียกข้อมูล" },
     ]);
     expect(m.unavailablePopular).toEqual([
-      { symbol: "TSLA", code: "not_found", label: "Symbol not found" },
+      { symbol: "TSLA", code: "not_found", label: "ไม่พบหุ้นนี้" },
     ]);
     expect(m.unavailableOther.map((u) => u.symbol)).toEqual(["XYZ"]);
     // A section with only unavailable symbols is still shown, so users see why it's missing.
@@ -53,7 +53,7 @@ describe("buildOverviewModel", () => {
 
 describe("unavailableReasonLabel", () => {
   it("maps known codes and falls back for unknown ones", () => {
-    expect(unavailableReasonLabel("provider_not_entitled")).toBe("Not in data plan");
-    expect(unavailableReasonLabel("something_new")).toBe("Unavailable");
+    expect(unavailableReasonLabel("provider_not_entitled")).toBe("ไม่อยู่ในแพ็กเกจข้อมูล");
+    expect(unavailableReasonLabel("something_new")).toBe("ไม่มีข้อมูล");
   });
 });

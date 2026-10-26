@@ -23,7 +23,7 @@ interface StoredWatchlist {
 /** Persists the watchlist in this browser's localStorage. Not synced across devices. */
 export class LocalStorageWatchlistRepository implements WatchlistRepository {
   readonly storageDescription =
-    "Saved on this device only (browser storage). It does not sync across devices.";
+    "บันทึกไว้ในอุปกรณ์นี้เท่านั้น (พื้นที่จัดเก็บของเบราว์เซอร์) ไม่ซิงค์ข้ามอุปกรณ์";
 
   constructor(private readonly storage: Storage = window.localStorage) {}
 
@@ -54,7 +54,7 @@ export class LocalStorageWatchlistRepository implements WatchlistRepository {
 
 /** In-memory repository for tests and non-browser environments. */
 export class MemoryWatchlistRepository implements WatchlistRepository {
-  readonly storageDescription = "Kept in memory for this session only.";
+  readonly storageDescription = "เก็บไว้ในหน่วยความจำเฉพาะเซสชันนี้";
   private listeners = new Set<() => void>();
 
   constructor(private symbols: string[] = []) {}

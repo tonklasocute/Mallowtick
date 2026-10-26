@@ -12,7 +12,7 @@ export function BottomNav() {
   const pathname = usePathname() ?? "/";
   return (
     <nav
-      aria-label="Primary"
+      aria-label="เมนูหลัก"
       className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm lg:hidden"
     >
       <ul className="mx-auto flex h-(--nav-height) max-w-md items-stretch">
