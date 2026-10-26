@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Next.js
+apps/web/.next/
+apps/web/out/
+apps/web/next-env.d.ts
+*.tsbuildinfo
+
+# Go
+services/api/bin/
+
+# Environment (never commit secrets; .env.example files are tracked)
+.env
+.env.*
+!.env.example
+
+# Tooling / OS
+coverage/
+.DS_Store
+*.log
