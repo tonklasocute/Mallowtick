@@ -5,6 +5,7 @@ import "@/styles/globals.css";
 
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { ServiceWorkerRegistrar } from "@/components/layout/service-worker-registrar";
+import { SideNav } from "@/components/layout/side-nav";
 import { BRAND } from "@/lib/brand";
 
 import { Providers } from "./providers";
@@ -36,7 +37,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <body>
         <Providers>
-          <div className="mx-auto min-h-dvh max-w-md">{children}</div>
+          <SideNav />
+          <div className="min-h-dvh lg:pl-(--sidebar-width)">{children}</div>
           <BottomNav />
         </Providers>
         <ServiceWorkerRegistrar />

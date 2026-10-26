@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
+import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { IconButton } from "@/components/ui/button";
 import { useWatchlist } from "@/features/watchlist/use-watchlist";
@@ -32,7 +33,7 @@ export function StockDetailScreen({ symbol }: { symbol: string }) {
   );
 
   return (
-    <>
+    <PageContainer>
       <PageHeader
         leading={
           <IconButton
@@ -60,6 +61,6 @@ export function StockDetailScreen({ symbol }: { symbol: string }) {
           provider; levels are Mallowtick calculations.
         </p>
       </main>
-    </>
+    </PageContainer>
   );
 }

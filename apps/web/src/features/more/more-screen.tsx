@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useSyncExternalStore } from "react";
 
 import { Mascot } from "@/components/brand/mascot";
+import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { errorCopy } from "@/components/market/api-error-state";
 import { Badge } from "@/components/ui/badge";
@@ -93,7 +94,7 @@ export function MoreScreen() {
   const repo = useWatchlistRepository();
   const standalone = useIsStandalone();
   return (
-    <>
+    <PageContainer>
       <PageHeader title="More" />
       <main className="pb-nav space-y-4 px-4">
         <Section icon={<Database aria-hidden className="size-5" />} title="Market data">
@@ -135,6 +136,6 @@ export function MoreScreen() {
           </p>
         </Section>
       </main>
-    </>
+    </PageContainer>
   );
 }
