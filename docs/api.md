@@ -44,10 +44,12 @@ The web proxy adds `api_unreachable` (502) when the Go API can't be reached.
 |---|---|---|
 | `1d` | 5min | 78 (one session) |
 | `1w` | 30min | 65 |
-| `1m` | 1h | 154 |
+| `1m` | 1day | 22 |
 | `3m` | 1day | 63 |
 | `1y` | 1day | 252 |
 | `5y` | 1week | 260 |
+
+Each range is fetched with up to 900 earlier warm-up bars in the same provider request (one credit), so indicators such as a 300-bar EMA have converged by the first visible bar.
 
 `freshness` objects are described in [market-data.md](market-data.md#freshness-model). Timestamps are RFC 3339. Candle times carry the exchange offset.
 
@@ -110,9 +112,9 @@ Instrument metadata (same shape as a search result). Cached for 24h.
 
 Fields the provider didn't report are `null`.
 
-### `GET /stocks/{symbol}/candles?range=1d`
+### `GET /stocks/{symbol}/candles?range=1d&warmup=true`
 
-Default range `1d`. Candles are oldest first, and `time` is the bar open.
+Default range `1d`. Candles are oldest first, and `time` is the bar open. With `warmup=true` the response adds `warmup`: the bars before `candles` (up to 900, fewer when the history is shorter), oldest first. The chart uses them to compute EMAs; sparklines leave the flag off for a smaller payload. Levels are always calculated from `candles` only.
 
 ```json
 { "data": { "symbol": "AAPL", "interval": "5min", "range": "1d", "currency": "USD", "exchangeTimezone": "America/New_York",

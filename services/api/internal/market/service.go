@@ -123,9 +123,11 @@ type Overview struct {
 	Unavailable []UnavailableSymbol `json:"unavailable"`
 }
 
-// CandlesResult is a candle series for a UI range.
+// CandlesResult is a candle series for a UI range. Candles holds the range's
+// bars; Warmup holds up to WarmupBars earlier bars for indicator calculation.
 type CandlesResult struct {
 	CandleSeries
+	Warmup    []Candle  `json:"warmup,omitempty"`
 	Range     Range     `json:"range"`
 	Freshness Freshness `json:"freshness"`
 }
@@ -449,17 +451,21 @@ func (s *Service) Candles(ctx context.Context, symbol Symbol, rng Range) (Candle
 	spec := rng.Spec()
 	key := "candles:" + string(symbol) + ":" + string(rng)
 	e, stale, err := load(ctx, s, s.candles, key, s.candleTTL(spec), func(fctx context.Context) (CandleSeries, error) {
-		return s.provider.Candles(fctx, symbol, spec.Interval, spec.Bars)
+		return s.provider.Candles(fctx, symbol, spec.Interval, spec.Bars+WarmupBars)
 	})
 	if err != nil {
 		return CandlesResult{}, err
 	}
+	series := e.Value
+	split := max(len(series.Candles)-spec.Bars, 0)
+	visible, warmup := series.Candles[split:], series.Candles[:split]
+	series.Candles = visible
 	var asOf *time.Time
-	if n := len(e.Value.Candles); n > 0 {
-		t := e.Value.Candles[n-1].Time
+	if n := len(visible); n > 0 {
+		t := visible[n-1].Time
 		asOf = &t
 	}
-	return CandlesResult{CandleSeries: e.Value, Range: rng, Freshness: s.freshness(asOf, e.StoredAt, stale)}, nil
+	return CandlesResult{CandleSeries: series, Warmup: warmup, Range: rng, Freshness: s.freshness(asOf, e.StoredAt, stale)}, nil
 }
 
 // Levels computes support and resistance from the same candles the chart for

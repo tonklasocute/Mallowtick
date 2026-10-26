@@ -135,7 +135,21 @@ export function MoreScreen() {
           <p className="text-xs text-slate">
             ใช้เป็นข้อมูลประกอบเท่านั้น ไม่ใช่คำแนะนำการลงทุน
             แนวรับและแนวต้านเป็นค่าประมาณจากการคำนวณ และไม่ได้คาดการณ์ราคาในอนาคต ข้อมูลตลาดโดย
-            Twelve Data กราฟโดย TradingView Lightweight Charts™
+            Twelve Data
+          </p>
+          {/* Attribution notice required by the Lightweight Charts licence (the chart shows no logo). */}
+          <p className="text-xs text-slate">
+            กราฟโดย TradingView Lightweight Charts™
+            <br />
+            Copyright (с) 2025 TradingView, Inc.{" "}
+            <a
+              href="https://www.tradingview.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-mint-deep underline underline-offset-2"
+            >
+              https://www.tradingview.com/
+            </a>
           </p>
         </Section>
       </main>
