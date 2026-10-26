@@ -27,7 +27,9 @@ type Provider interface {
 	// SearchSymbols matches tickers and company names among US instruments.
 	SearchSymbols(ctx context.Context, query string, limit int) ([]Instrument, error)
 	// Quotes returns the latest quote per requested symbol. Symbols the
-	// provider could not resolve are absent from the map.
+	// provider could not resolve are absent from the map. A partial result may
+	// come with a non-nil error that explains the symbols it could not fetch
+	// (e.g. ErrRateLimited); they are not reported as unknown.
 	Quotes(ctx context.Context, symbols []Symbol) (map[Symbol]Quote, error)
 	// Candles returns the most recent bars for symbol, oldest first.
 	Candles(ctx context.Context, symbol Symbol, interval Interval, bars int) (CandleSeries, error)

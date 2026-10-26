@@ -1,6 +1,7 @@
 package market
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
@@ -33,10 +34,14 @@ type ServiceConfig struct {
 }
 
 const (
-	searchTTL     = 10 * time.Minute
+	searchTTL     = 24 * time.Hour
 	instrumentTTL = 24 * time.Hour
-	statusTTL     = time.Minute
-	searchLimit   = 10
+	// statusTTL applies when the provider reports no countdown; otherwise the
+	// status is kept until the next open or close, capped at statusMaxTTL.
+	statusTTL    = 5 * time.Minute
+	statusMaxTTL = 6 * time.Hour
+	statusKey    = "status"
+	searchLimit  = 10
 )
 
 // Service is the application layer between transports and a Provider.
@@ -118,9 +123,11 @@ type Overview struct {
 	Unavailable []UnavailableSymbol `json:"unavailable"`
 }
 
-// CandlesResult is a candle series for a UI range.
+// CandlesResult is a candle series for a UI range. Candles holds the range's
+// bars; Warmup holds up to WarmupBars earlier bars for indicator calculation.
 type CandlesResult struct {
 	CandleSeries
+	Warmup    []Candle  `json:"warmup,omitempty"`
 	Range     Range     `json:"range"`
 	Freshness Freshness `json:"freshness"`
 }
@@ -235,11 +242,61 @@ func (s *Service) Instrument(ctx context.Context, symbol Symbol) (Instrument, er
 	return e.Value, err
 }
 
+// closedFor reports how long the market stays closed, judged only from the
+// cached market status so it never spends provider credits. ok is false while
+// the market is open or the next open is unknown.
+func (s *Service) closedFor() (time.Duration, bool) {
+	e, state := s.status.Get(statusKey)
+	if state != cache.Fresh || e.Value.IsOpen || e.Value.OpensInSeconds == nil {
+		return 0, false
+	}
+	left := time.Duration(*e.Value.OpensInSeconds)*time.Second - s.cfg.Now().Sub(e.StoredAt)
+	return left, left > 0
+}
+
+// quoteTTL keeps closed-market quotes until the next open: prices do not move
+// in between, so refetching them only spends credits.
 func (s *Service) quoteTTL(q Quote) time.Duration {
-	if q.IsMarketOpen != nil && !*q.IsMarketOpen && s.cfg.QuoteTTLClosed > 0 {
-		return s.cfg.QuoteTTLClosed
+	if q.IsMarketOpen != nil && !*q.IsMarketOpen {
+		if d, ok := s.closedFor(); ok {
+			return d
+		}
+		if s.cfg.QuoteTTLClosed > 0 {
+			return s.cfg.QuoteTTLClosed
+		}
 	}
 	return s.cfg.QuoteTTL
+}
+
+// candleTTL applies the range's TTL, or keeps the series until the next open
+// when the market is closed and no new bars can form.
+func (s *Service) candleTTL(spec RangeSpec) func(CandleSeries) time.Duration {
+	return func(CandleSeries) time.Duration {
+		if d, ok := s.closedFor(); ok && d > spec.CacheTTL {
+			return d
+		}
+		return spec.CacheTTL
+	}
+}
+
+// statusTTLFor keeps the status until the provider-reported next open or
+// close, so it is fetched about twice a day instead of every few minutes.
+func statusTTLFor(st MarketStatus) time.Duration {
+	countdown := st.OpensInSeconds
+	if st.IsOpen {
+		countdown = st.ClosesInSeconds
+	}
+	if countdown == nil || *countdown <= 0 {
+		return statusTTL
+	}
+	return min(time.Duration(*countdown)*time.Second, statusMaxTTL)
+}
+
+// quoteFetch is one provider batch: the quotes it stored and, for a partial
+// result, why the rest are missing.
+type quoteFetch struct {
+	stored     map[Symbol]cache.Entry[Quote]
+	missingErr error
 }
 
 // resolveQuotes resolves each symbol from cache or one provider request for all
@@ -268,28 +325,25 @@ func (s *Service) resolveQuotes(ctx context.Context, symbols []Symbol) ([]QuoteR
 		}
 		v, fetchErr := s.do(ctx, "quotes:"+strings.Join(keys, ","), func(fctx context.Context) (any, error) {
 			got, err := s.provider.Quotes(fctx, misses)
-			if err != nil {
+			if err != nil && len(got) == 0 {
 				return nil, err
 			}
-			stored := make(map[Symbol]cache.Entry[Quote], len(got))
+			f := quoteFetch{stored: make(map[Symbol]cache.Entry[Quote], len(got)), missingErr: err}
 			for sym, q := range got {
-				stored[sym] = s.quotes.SetWithTTL(string(sym), q, s.quoteTTL(q))
+				f.stored[sym] = s.quotes.SetWithTTL(string(sym), q, s.quoteTTL(q))
 			}
-			return stored, nil
+			return f, nil
 		})
-		var fetched map[Symbol]cache.Entry[Quote]
+		var fetched quoteFetch
 		if fetchErr == nil {
-			fetched = v.(map[Symbol]cache.Entry[Quote])
+			fetched = v.(quoteFetch)
 		}
 		for _, sym := range misses {
-			if e, ok := fetched[sym]; ok {
+			if e, ok := fetched.stored[sym]; ok {
 				results[sym] = QuoteResult{Quote: e.Value, Freshness: s.freshness(e.Value.AsOf, e.StoredAt, false)}
 				continue
 			}
-			err := fetchErr
-			if err == nil {
-				err = ErrNotFound
-			}
+			err := cmp.Or(fetchErr, fetched.missingErr, ErrNotFound)
 			if e, ok := staleEntries[sym]; ok && canFallBack(err) {
 				s.log.WarnContext(ctx, "serving stale quote", slog.String("symbol", string(sym)), slog.Any("error", err))
 				results[sym] = QuoteResult{Quote: e.Value, Freshness: s.freshness(e.Value.AsOf, e.StoredAt, true)}
@@ -396,18 +450,22 @@ func (s *Service) Overview(ctx context.Context) (Overview, error) {
 func (s *Service) Candles(ctx context.Context, symbol Symbol, rng Range) (CandlesResult, error) {
 	spec := rng.Spec()
 	key := "candles:" + string(symbol) + ":" + string(rng)
-	e, stale, err := load(ctx, s, s.candles, key, fixedTTL[CandleSeries](spec.CacheTTL), func(fctx context.Context) (CandleSeries, error) {
-		return s.provider.Candles(fctx, symbol, spec.Interval, spec.Bars)
+	e, stale, err := load(ctx, s, s.candles, key, s.candleTTL(spec), func(fctx context.Context) (CandleSeries, error) {
+		return s.provider.Candles(fctx, symbol, spec.Interval, spec.Bars+WarmupBars)
 	})
 	if err != nil {
 		return CandlesResult{}, err
 	}
+	series := e.Value
+	split := max(len(series.Candles)-spec.Bars, 0)
+	visible, warmup := series.Candles[split:], series.Candles[:split]
+	series.Candles = visible
 	var asOf *time.Time
-	if n := len(e.Value.Candles); n > 0 {
-		t := e.Value.Candles[n-1].Time
+	if n := len(visible); n > 0 {
+		t := visible[n-1].Time
 		asOf = &t
 	}
-	return CandlesResult{CandleSeries: e.Value, Range: rng, Freshness: s.freshness(asOf, e.StoredAt, stale)}, nil
+	return CandlesResult{CandleSeries: series, Warmup: warmup, Range: rng, Freshness: s.freshness(asOf, e.StoredAt, stale)}, nil
 }
 
 // Levels computes support and resistance from the same candles the chart for
@@ -438,13 +496,27 @@ func (s *Service) Levels(ctx context.Context, symbol Symbol, rng Range) (LevelsR
 	}, nil
 }
 
-// MarketStatus reports whether the US equity market is open.
+// MarketStatus reports whether the US equity market is open. Countdowns are
+// recomputed from the cached value's age, since the status is kept for hours.
 func (s *Service) MarketStatus(ctx context.Context) (StatusResult, error) {
-	e, stale, err := load(ctx, s, s.status, "status", fixedTTL[MarketStatus](statusTTL), s.provider.MarketStatus)
+	e, stale, err := load(ctx, s, s.status, statusKey, statusTTLFor, s.provider.MarketStatus)
 	if err != nil {
 		return StatusResult{}, err
 	}
-	return StatusResult{MarketStatus: e.Value, Freshness: s.freshness(nil, e.StoredAt, stale)}, nil
+	st := e.Value
+	elapsed := int64(s.cfg.Now().Sub(e.StoredAt) / time.Second)
+	st.OpensInSeconds = remaining(st.OpensInSeconds, elapsed)
+	st.ClosesInSeconds = remaining(st.ClosesInSeconds, elapsed)
+	return StatusResult{MarketStatus: st, Freshness: s.freshness(nil, e.StoredAt, stale)}, nil
+}
+
+// remaining shortens a countdown by elapsed seconds; nil once it has run out.
+func remaining(countdown *int64, elapsed int64) *int64 {
+	if countdown == nil || *countdown-elapsed <= 0 {
+		return nil
+	}
+	left := *countdown - elapsed
+	return &left
 }
 
 // ErrorCode maps an error to the stable machine-readable code used in API

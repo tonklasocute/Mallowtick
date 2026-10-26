@@ -17,6 +17,9 @@ export const queryKeys = {
   quote: (symbol: string) => ["quote", symbol] as const,
   quotes: (symbols: string[]) => ["quotes", ...symbols] as const,
   candles: (symbol: string, range: ChartRange) => ["candles", symbol, range] as const,
+  /** Candles plus warm-up bars for indicators; a separate entry from plain candles. */
+  chartCandles: (symbol: string, range: ChartRange) =>
+    ["candles", symbol, range, "warmup"] as const,
   levels: (symbol: string, range: ChartRange) => ["levels", symbol, range] as const,
 };
 
@@ -109,10 +112,11 @@ export function useQuotes(symbols: string[]) {
   });
 }
 
+/** Chart candles with warm-up bars for EMA; costs the same provider credit as plain candles. */
 export function useCandles(symbol: string, range: ChartRange) {
   return useQuery({
-    queryKey: queryKeys.candles(symbol, range),
-    queryFn: ({ signal }) => endpoints.candles(symbol, range, signal),
+    queryKey: queryKeys.chartCandles(symbol, range),
+    queryFn: ({ signal }) => endpoints.candles(symbol, range, signal, true),
     // Intraday bars change during the session; longer ranges are refreshed on focus only.
     refetchInterval: range === "1d" ? 2 * QUOTE_REFRESH_MS : false,
     staleTime: range === "1d" ? 60_000 : 5 * 60_000,
@@ -132,14 +136,18 @@ export function useLevels(symbol: string, range: ChartRange) {
 
 /**
  * Intraday points for compact sparklines. Fetched once and kept for a while to
- * respect provider credit limits; a failure simply hides the sparkline.
+ * respect provider credit limits; a failure simply hides the sparkline. Each
+ * symbol costs a provider credit, so lists pass `enabled` only for visible rows.
  */
-export function useSparkline(symbol: string) {
+export function useSparkline(symbol: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.candles(symbol, "1d"),
     queryFn: ({ signal }) => endpoints.candles(symbol, "1d", signal),
+    enabled,
     staleTime: 10 * 60_000,
-    retry: false,
+    // One retry when credits ran out, after the minute resets (Retry-After).
+    retry: (count, err) => count < 1 && isApiError(err) && err.code === "rate_limited",
+    retryDelay: (_, err) => (isApiError(err) ? (err.retryAfterSeconds ?? 60) : 60) * 1000,
     refetchOnWindowFocus: false,
   });
 }

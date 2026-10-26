@@ -5,7 +5,6 @@ go 1.27.2
 require (
 	github.com/gin-gonic/gin v1.12.0
 	golang.org/x/sync v0.24.0
-	golang.org/x/time v0.16.0
 )
 
 require (

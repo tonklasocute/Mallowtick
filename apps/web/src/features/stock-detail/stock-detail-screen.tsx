@@ -20,7 +20,8 @@ import { QuoteStats } from "./quote-stats";
 
 export function StockDetailScreen({ symbol }: { symbol: string }) {
   const router = useRouter();
-  const [range, setRange] = useState<ChartRange>("1d");
+  // Daily candles over one month by default.
+  const [range, setRange] = useState<ChartRange>("1m");
   const quote = useQuote(symbol);
   const candles = useCandles(symbol, range);
   const levelsQuery = useLevels(symbol, range);

@@ -100,18 +100,26 @@ type RangeSpec struct {
 	// regular US sessions (6.5 hours), so a range may span slightly more or
 	// less calendar time around holidays and half days.
 	Bars int
-	// CacheTTL is how long a fetched series is reused before asking again.
+	// CacheTTL is how long a fetched series is reused while the market is open;
+	// roughly one bar, since a refetch sooner adds little. Closed-market series
+	// are kept until the next open.
 	CacheTTL time.Duration
 }
 
 var rangeSpecs = map[Range]RangeSpec{
-	Range1D: {Interval: Interval5Min, Bars: 78, CacheTTL: time.Minute},       // 1 session × 78 five-minute bars
-	Range1W: {Interval: Interval30Min, Bars: 65, CacheTTL: 5 * time.Minute},  // 5 sessions × 13 bars
-	Range1M: {Interval: Interval1Hour, Bars: 154, CacheTTL: 5 * time.Minute}, // ~22 sessions × 7 bars
-	Range3M: {Interval: Interval1Day, Bars: 63, CacheTTL: 15 * time.Minute},
-	Range1Y: {Interval: Interval1Day, Bars: 252, CacheTTL: 15 * time.Minute},
-	Range5Y: {Interval: Interval1Week, Bars: 260, CacheTTL: time.Hour},
+	Range1D: {Interval: Interval5Min, Bars: 78, CacheTTL: 5 * time.Minute},   // 1 session × 78 five-minute bars
+	Range1W: {Interval: Interval30Min, Bars: 65, CacheTTL: 15 * time.Minute}, // 5 sessions × 13 bars
+	Range1M: {Interval: Interval1Day, Bars: 22, CacheTTL: time.Hour},         // ~22 sessions
+	Range3M: {Interval: Interval1Day, Bars: 63, CacheTTL: time.Hour},
+	Range1Y: {Interval: Interval1Day, Bars: 252, CacheTTL: time.Hour},
+	Range5Y: {Interval: Interval1Week, Bars: 260, CacheTTL: 6 * time.Hour},
 }
+
+// WarmupBars are fetched before a range's bars in the same request (Twelve
+// Data charges one credit per request regardless of size) so indicators such
+// as a 300-bar EMA have converged by the first visible bar. Three times the
+// longest supported period leaves the seed's influence below 0.3%.
+const WarmupBars = 900
 
 // Ranges lists supported ranges in display order.
 var Ranges = []Range{Range1D, Range1W, Range1M, Range3M, Range1Y, Range5Y}

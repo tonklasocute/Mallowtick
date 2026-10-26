@@ -85,6 +85,8 @@ export interface CandleSeries {
   currency?: string;
   exchangeTimezone: string;
   candles: Candle[];
+  /** Earlier bars for indicator warm-up; present only when requested. */
+  warmup?: Candle[];
   range: ChartRange;
   freshness: Freshness;
 }

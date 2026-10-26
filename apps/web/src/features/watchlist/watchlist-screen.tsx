@@ -15,6 +15,7 @@ import { IconButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StateMessage } from "@/components/ui/state-message";
+import { useInView } from "@/hooks/use-in-view";
 import { direction } from "@/lib/format";
 import { unavailableReasonLabel } from "@/lib/unavailable-reason";
 import { isApiError } from "@/services/api/client";
@@ -23,15 +24,16 @@ import type { Quote } from "@/types/api";
 
 import { useStorageDescription, useWatchlist } from "./use-watchlist";
 
+/** Loads only once its row is on screen (and not on narrow phones, where it is hidden). */
 function RowSparkline({ quote }: { quote: Quote }) {
-  const { data } = useSparkline(quote.symbol);
-  if (!data || data.candles.length < 2) return null;
+  const [ref, inView] = useInView<HTMLSpanElement>();
+  const { data } = useSparkline(quote.symbol, inView);
   return (
-    <Sparkline
-      candles={data.candles}
-      trend={direction(quote.changePercent ?? quote.change)}
-      className="hidden min-[360px]:block"
-    />
+    <span ref={ref} className="hidden min-[360px]:block">
+      {data && data.candles.length >= 2 && (
+        <Sparkline candles={data.candles} trend={direction(quote.changePercent ?? quote.change)} />
+      )}
+    </span>
   );
 }
 

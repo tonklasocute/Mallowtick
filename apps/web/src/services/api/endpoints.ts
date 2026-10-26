@@ -26,8 +26,12 @@ export const endpoints = {
     apiGet<Quote>(`/stocks/${enc(symbol)}/quote`, undefined, { signal }),
   quotes: (symbols: string[], signal?: Signal) =>
     apiGet<QuoteBatch>("/stocks/quotes", { symbols: symbols.join(",") }, { signal }),
-  candles: (symbol: string, range: ChartRange, signal?: Signal) =>
-    apiGet<CandleSeries>(`/stocks/${enc(symbol)}/candles`, { range }, { signal }),
+  candles: (symbol: string, range: ChartRange, signal?: Signal, warmup = false) =>
+    apiGet<CandleSeries>(
+      `/stocks/${enc(symbol)}/candles`,
+      { range, warmup: warmup ? "true" : undefined },
+      { signal },
+    ),
   levels: (symbol: string, range: ChartRange, signal?: Signal) =>
     apiGet<LevelsResponse>(`/stocks/${enc(symbol)}/levels`, { range }, { signal }),
 };

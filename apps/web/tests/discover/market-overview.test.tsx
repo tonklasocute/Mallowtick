@@ -50,7 +50,10 @@ describe("MarketOverview", () => {
     renderWithProviders(<MarketOverview />);
 
     const benchmarks = await screen.findByRole("region", { name: "ดัชนีอ้างอิงตลาด" });
-    expect(within(benchmarks).getByText("$759.97")).toBeInTheDocument();
+    // The currency symbol is a separate <sup>, so match the whole price element.
+    expect(within(benchmarks).getByText((_, el) => el?.textContent === "$759.97")).toHaveClass(
+      "tabular",
+    );
     expect(within(benchmarks).getByRole("link", { name: /QQQ/ })).toHaveAttribute(
       "href",
       "/stocks/QQQ",
