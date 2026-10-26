@@ -55,6 +55,16 @@ func run() error {
 		Logger:          log,
 	})
 
+	if provider.Configured() {
+		// Spend the market-status credit before any client arrives, so the first
+		// Discover load (overview batch + one sparkline) fits the per-minute budget.
+		go func() {
+			if _, err := svc.MarketStatus(context.Background()); err != nil {
+				log.Warn("market status warm-up failed", slog.Any("error", err))
+			}
+		}()
+	}
+
 	srv := &http.Server{
 		Addr: cfg.Addr,
 		Handler: httptransport.NewRouter(httptransport.Options{

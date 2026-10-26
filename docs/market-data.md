@@ -57,15 +57,28 @@ The client labels data from these fields (`src/lib/freshness.ts`):
 
 Streaming is not implemented because the Basic and Grow plans only stream a handful of trial symbols. Instead:
 
-- **Server cache bounds provider usage** regardless of how many clients poll. Quotes are cached per symbol for `QUOTE_CACHE_TTL` (60s), or `QUOTE_CACHE_TTL_CLOSED` (15m) when the provider reports the market closed. Candles are cached per symbol+range: 1 min (1D), 5 min (1W/1M), 15 min (3M/1Y), and 1 h (5Y).
+- **Server cache bounds provider usage** regardless of how many clients poll.
+  - **Market status** is kept until the provider-reported next open or close (at most 6 h), so it costs about two credits a day. Countdowns are recomputed from the cached value's age. The API fetches it once at startup so the first Discover load fits the per-minute budget.
+  - **Quotes** are cached per symbol for `QUOTE_CACHE_TTL` while the market is open. Closed-market quotes are kept until the next open; `QUOTE_CACHE_TTL_CLOSED` (15m) applies only while the market status is unknown.
+  - **Candles** are cached per symbol+range for about one bar while the market is open: 5 min (1D), 15 min (1W), 30 min (1M), 1 h (3M/1Y), 6 h (5Y). When the market is closed they are kept until the next open.
+  - **Search** results are cached for 24 h.
 - **Concurrent identical requests share one provider call** (singleflight). Batch quotes only fetch the symbols missing from cache.
-- **A local credit limiter** (`TWELVEDATA_CREDITS_PER_MINUTE`) spends credits before each request and fails fast with `rate_limited` instead of waiting longer than `TWELVEDATA_MAX_WAIT`. Batches larger than the per-minute allowance are split, and any part that can't run is reported in `unavailable`.
+- **A local credit budget** (`TWELVEDATA_CREDITS_PER_MINUTE`, `internal/market/twelvedata/budget.go`) books credits before each request the way Twelve Data counts them: at most N credits in any **sliding 60-second window**, not per calendar minute and not as a refilling token bucket. Both of those let a 9th credit through and the provider answered 429 (observed: 1 credit at :43, 7 at :54, 1 at :01 of the next minute). A request waits up to `TWELVEDATA_MAX_WAIT` (10s) for room and then fails with `rate_limited` without calling the provider. If the provider still answers 429 (e.g. another app uses the same key), the window is marked full.
+- **Batch quotes take what fits:** a batch is fetched in the order given, only as far as credits allow. The rest come back in `unavailable` with reason `rate_limited`, and the next poll fills them in. Discover lists benchmarks first, so they win.
 - **Stale fallback:** if a refresh fails (other than "not found"), a value fetched within `STALE_RETENTION` is returned with `stale: true`.
-- **Client:** visible screens refetch quotes every `NEXT_PUBLIC_QUOTE_REFRESH_SECONDS` (60s) and when the app regains focus. Hidden tabs don't poll. 1D charts refresh every 2 minutes; longer ranges refresh on focus only. Sparklines are fetched once and kept for 10 minutes.
+- **Client:** visible screens refetch quotes every `NEXT_PUBLIC_QUOTE_REFRESH_SECONDS` (60s) and when the app regains focus; these hit the server cache, not the provider. Hidden tabs don't poll. 1D charts refresh every 2 minutes; longer ranges refresh on focus only. Sparklines are fetched once a row is on screen and kept for 10 minutes; watchlist rows hidden on narrow phones never fetch one.
 
 ### Credit budget on the free plan
 
-800 credits/day is about 0.55 credits/minute on average, so continuous polling exhausts it within hours. Rough cost while a screen is open: Discover with 3 benchmarks + 4 popular stocks ≈ 7 credits/min (+1 per sparkline); Stock Detail ≈ 1 credit/min for the quote plus 0.5/min for 1D candles. For daily use on the free plan, raise `QUOTE_CACHE_TTL` (e.g. `5m`) and/or trim `POPULAR_SYMBOLS`. A paid plan removes the daily cap.
+The free plan allows 8 credits/minute and 800/day, and a batch quote costs one credit per symbol.
+
+- **First Discover load:** 7 credits for 3 benchmarks + 4 popular stocks, plus 1 for the hero sparkline. With the startup status credit in the same 60 s, the sparkline waits for the window and the client retries it after `Retry-After`.
+- **Discover left open all session** with `QUOTE_CACHE_TTL=5m` (the `.env.example` value): about 8 credits every 5 minutes, ≈ 620 over a 6.5 h session. With 60s it would be about 3,000, far over the daily cap.
+- **Market closed:** cached quotes and candles cost nothing until the next open.
+- **Stock Detail:** 1 credit per range first viewed (levels reuse the chart's candles). The quote is usually already cached from Discover.
+- **Watchlist:** 1 credit per symbol not yet cached, plus 1 per sparkline that scrolls into view.
+
+To stretch the budget further, raise `QUOTE_CACHE_TTL` or trim `POPULAR_SYMBOLS`. A paid plan removes the daily cap.
 
 ## Adding another provider
 

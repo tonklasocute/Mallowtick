@@ -139,18 +139,26 @@ func (d quoteDTO) toQuote() (market.Quote, bool) {
 	return q, true
 }
 
-// Quotes implements market.Provider. Each symbol costs one credit; large
-// batches are split so no request exceeds the per-minute allowance.
+// Quotes implements market.Provider. Each symbol costs one credit, so a batch
+// is fetched in the order given, only as far as credits allow: the first
+// chunk may wait for credits (up to MaxWait), later ones only use credits
+// that are free now. Symbols left over are reported with ErrRateLimited
+// alongside the partial result, so a screen shows what it can and fills in
+// the rest on its next refresh.
 func (c *Client) Quotes(ctx context.Context, symbols []market.Symbol) (map[market.Symbol]market.Quote, error) {
 	out := make(map[market.Symbol]market.Quote, len(symbols))
-	for start := 0; start < len(symbols); start += c.burst {
-		chunk := symbols[start:min(start+c.burst, len(symbols))]
-		if err := c.quoteChunk(ctx, chunk, out); err != nil {
-			if len(out) > 0 {
-				return out, nil // partial result; missing symbols are reported by the caller
+	for start := 0; start < len(symbols); {
+		size := min(c.burst, len(symbols)-start)
+		if avail := c.budget.available(); avail < size {
+			if start > 0 && avail == 0 {
+				return out, fmt.Errorf("%w: no credits left for %d more symbols", market.ErrRateLimited, len(symbols)-start)
 			}
-			return nil, err
+			size = max(avail, 1)
 		}
+		if err := c.quoteChunk(ctx, symbols[start:start+size], out); err != nil {
+			return out, err
+		}
+		start += size
 	}
 	return out, nil
 }

@@ -132,14 +132,18 @@ export function useLevels(symbol: string, range: ChartRange) {
 
 /**
  * Intraday points for compact sparklines. Fetched once and kept for a while to
- * respect provider credit limits; a failure simply hides the sparkline.
+ * respect provider credit limits; a failure simply hides the sparkline. Each
+ * symbol costs a provider credit, so lists pass `enabled` only for visible rows.
  */
-export function useSparkline(symbol: string) {
+export function useSparkline(symbol: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.candles(symbol, "1d"),
     queryFn: ({ signal }) => endpoints.candles(symbol, "1d", signal),
+    enabled,
     staleTime: 10 * 60_000,
-    retry: false,
+    // One retry when credits ran out, after the minute resets (Retry-After).
+    retry: (count, err) => count < 1 && isApiError(err) && err.code === "rate_limited",
+    retryDelay: (_, err) => (isApiError(err) ? (err.retryAfterSeconds ?? 60) : 60) * 1000,
     refetchOnWindowFocus: false,
   });
 }

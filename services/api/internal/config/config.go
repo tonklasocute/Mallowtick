@@ -114,7 +114,7 @@ func Load(lookup LookupFunc) (Config, error) {
 			APIKey:           l.str("TWELVEDATA_API_KEY", ""),
 			BaseURL:          l.str("TWELVEDATA_BASE_URL", "https://api.twelvedata.com"),
 			CreditsPerMinute: l.positiveInt("TWELVEDATA_CREDITS_PER_MINUTE", 8),
-			MaxWait:          l.duration("TWELVEDATA_MAX_WAIT", 5*time.Second),
+			MaxWait:          l.duration("TWELVEDATA_MAX_WAIT", 10*time.Second),
 			Timeout:          l.duration("TWELVEDATA_TIMEOUT", 10*time.Second),
 		},
 		Market: Market{
