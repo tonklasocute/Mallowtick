@@ -48,6 +48,20 @@
   --shadow-soft: 0 1px 2px rgb(36 64 61 / 0.04), 0 6px 20px rgb(36 64 61 / 0.06);
 }
 
+/*
+ * Price chart: pastel candles and one colour per EMA slot. "static" emits the
+ * variables even without a matching utility class, since the canvas chart and
+ * inline styles read them directly.
+ */
+@theme static {
+  --color-candle-up: #2ba47a;
+  --color-candle-down: #ee6a87;
+  --color-ema-1: #f5a524;
+  --color-ema-2: #4aa8ea;
+  --color-ema-3: #a07ce6;
+  --color-ema-4: #ec5f9a;
+}
+
 @layer base {
   :root {
     color-scheme: light;

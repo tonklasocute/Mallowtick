@@ -17,6 +17,9 @@ export const queryKeys = {
   quote: (symbol: string) => ["quote", symbol] as const,
   quotes: (symbols: string[]) => ["quotes", ...symbols] as const,
   candles: (symbol: string, range: ChartRange) => ["candles", symbol, range] as const,
+  /** Candles plus warm-up bars for indicators; a separate entry from plain candles. */
+  chartCandles: (symbol: string, range: ChartRange) =>
+    ["candles", symbol, range, "warmup"] as const,
   levels: (symbol: string, range: ChartRange) => ["levels", symbol, range] as const,
 };
 
@@ -109,10 +112,11 @@ export function useQuotes(symbols: string[]) {
   });
 }
 
+/** Chart candles with warm-up bars for EMA; costs the same provider credit as plain candles. */
 export function useCandles(symbol: string, range: ChartRange) {
   return useQuery({
-    queryKey: queryKeys.candles(symbol, range),
-    queryFn: ({ signal }) => endpoints.candles(symbol, range, signal),
+    queryKey: queryKeys.chartCandles(symbol, range),
+    queryFn: ({ signal }) => endpoints.candles(symbol, range, signal, true),
     // Intraday bars change during the session; longer ranges are refreshed on focus only.
     refetchInterval: range === "1d" ? 2 * QUOTE_REFRESH_MS : false,
     staleTime: range === "1d" ? 60_000 : 5 * 60_000,
