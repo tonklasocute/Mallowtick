@@ -7,17 +7,15 @@ import { StateMessage } from "@/components/ui/state-message";
 import { cn } from "@/lib/cn";
 import { useMarketOverview } from "@/services/api/queries";
 
-import { BenchmarkHeroCard, BenchmarkTile, UnavailableBenchmarkTile } from "./benchmark-cards";
+import {
+  BenchmarkHeroCard,
+  BenchmarkTile,
+  chipTint,
+  UnavailableBenchmarkTile,
+} from "./benchmark-cards";
 import { buildOverviewModel } from "./overview-model";
 import { PopularStocks } from "./popular-stocks";
-
-function SectionTitle({ id, children }: { id: string; children: string }) {
-  return (
-    <h2 id={id} className="px-1 font-display text-base font-semibold text-ink">
-      {children}
-    </h2>
-  );
-}
+import { SectionHeading } from "./section-heading";
 
 function OverviewSkeleton() {
   return (
@@ -71,15 +69,24 @@ export function MarketOverview() {
           aria-labelledby="benchmarks-title"
           className={cn("space-y-3", m.showPopular ? "lg:col-span-3" : "lg:col-span-5")}
         >
-          <SectionTitle id="benchmarks-title">ดัชนีอ้างอิงตลาด</SectionTitle>
+          <SectionHeading id="benchmarks-title">ดัชนีอ้างอิงตลาด</SectionHeading>
           {m.hero && <BenchmarkHeroCard quote={m.hero} receivedAt={dataUpdatedAt} />}
           {tileCount > 0 && (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-2">
-              {m.tiles.map((q) => (
-                <BenchmarkTile key={q.symbol} quote={q} receivedAt={dataUpdatedAt} />
+              {m.tiles.map((q, i) => (
+                <BenchmarkTile
+                  key={q.symbol}
+                  quote={q}
+                  receivedAt={dataUpdatedAt}
+                  tint={chipTint(i + 1)}
+                />
               ))}
-              {m.unavailableBenchmarks.map((u) => (
-                <UnavailableBenchmarkTile key={u.symbol} item={u} />
+              {m.unavailableBenchmarks.map((u, i) => (
+                <UnavailableBenchmarkTile
+                  key={u.symbol}
+                  item={u}
+                  tint={chipTint(m.tiles.length + i + 1)}
+                />
               ))}
             </div>
           )}

@@ -75,6 +75,20 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   `globals.css`. Tailwind v4 drops theme variables that no utility class uses, so they
   would silently fall back otherwise.
 
+## Discover screen
+
+- Follows the "หน้าแรก (Home)" artboard of the Claude design canvas: mint hero with the
+  mascot on the right, pill search with a dark submit button, pastel ticker chips, prices
+  with a raised `$` (`components/market/price-text.tsx`), and a floating pill bottom nav
+  (shared by every screen; `--nav-height`/`--nav-offset` in `globals.css`).
+- Only the first benchmark card draws a sparkline (with a dashed previous-close line). The
+  design also shows them on the other benchmarks and popular rows; they were left out on
+  purpose because each costs a provider credit (user's decision, 2026-10-26).
+- The hero mascot floats slowly (`animate-bob`, 4 s). It stays still under
+  `prefers-reduced-motion`, which Windows turns on when "Animation effects" is off.
+- The design's bell button and "ดูทั้งหมด" link are omitted: there are no notifications or
+  full popular list yet.
+
 ## Local development (Windows)
 
 - pnpm is not installed globally; run it through corepack: `corepack pnpm install`,

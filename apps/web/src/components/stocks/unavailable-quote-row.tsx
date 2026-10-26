@@ -1,16 +1,18 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { SymbolAvatar } from "./symbol-avatar";
+import { type AvatarShape, SymbolAvatar } from "./symbol-avatar";
 
 /** List row for a symbol whose quote couldn't be loaded. Shows no price. */
 export function UnavailableQuoteRow({
   symbol,
   reason,
+  avatarShape,
   trailing,
 }: {
   symbol: string;
   reason: string;
+  avatarShape?: AvatarShape;
   trailing?: ReactNode;
 }) {
   return (
@@ -20,7 +22,7 @@ export function UnavailableQuoteRow({
         className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl px-1 py-2.5 transition hover:bg-cream"
       >
         <span className="opacity-60">
-          <SymbolAvatar symbol={symbol} />
+          <SymbolAvatar symbol={symbol} shape={avatarShape} />
         </span>
         <span className="min-w-0 flex-1">
           <span className="block font-display text-[15px] font-semibold text-ink">{symbol}</span>

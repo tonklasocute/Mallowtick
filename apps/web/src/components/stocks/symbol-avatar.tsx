@@ -9,13 +9,29 @@ function tintFor(symbol: string): string {
 }
 
 /** Initials badge. Company logos are not used in V1. */
-export function SymbolAvatar({ symbol, size = "md" }: { symbol: string; size?: "md" | "lg" }) {
+export type AvatarShape = "circle" | "square";
+
+export function SymbolAvatar({
+  symbol,
+  size = "md",
+  shape = "circle",
+}: {
+  symbol: string;
+  size?: "md" | "lg";
+  /** Discover's popular list uses rounded squares. */
+  shape?: AvatarShape;
+}) {
   return (
     <span
       aria-hidden
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full font-display font-bold text-ink",
-        size === "lg" ? "size-14 text-lg" : "size-10 text-xs",
+        "flex shrink-0 items-center justify-center font-display font-bold text-ink",
+        shape === "square" ? "rounded-2xl" : "rounded-full",
+        size === "lg"
+          ? "size-14 text-lg"
+          : shape === "square"
+            ? "size-11 text-xs"
+            : "size-10 text-xs",
         tintFor(symbol),
       )}
     >
