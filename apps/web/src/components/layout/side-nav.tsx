@@ -14,11 +14,11 @@ export function SideNav() {
   const pathname = usePathname() ?? "/";
   return (
     <aside className="fixed inset-y-0 left-0 z-20 hidden w-(--sidebar-width) flex-col border-r border-line bg-surface/70 px-4 py-6 lg:flex">
-      <Link href="/" className="px-2" aria-label={`${BRAND.name} home`}>
+      <Link href="/" className="px-2" aria-label={`หน้าแรก ${BRAND.name}`}>
         <Logo />
       </Link>
       <p className="mt-1 px-2 font-display text-xs text-slate-strong">{BRAND.tagline}</p>
-      <nav aria-label="Primary" className="mt-8">
+      <nav aria-label="เมนูหลัก" className="mt-8">
         <ul className="space-y-1">
           {NAV_ITEMS.map(({ href, label, Icon, match, fillWhenActive }) => {
             const active = match(pathname);
@@ -48,7 +48,7 @@ export function SideNav() {
         </ul>
       </nav>
       <p className="mt-auto px-2 text-[11px] leading-relaxed text-slate">
-        US market data for information only — not investment advice.
+        ข้อมูลตลาดหุ้นสหรัฐฯ ใช้ประกอบการตัดสินใจเท่านั้น ไม่ใช่คำแนะนำการลงทุน
       </p>
     </aside>
   );

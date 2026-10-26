@@ -13,16 +13,16 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
   {
     href: "/",
-    label: "Discover",
+    label: "สำรวจ",
     Icon: Compass,
     match: (p) => p === "/" || p.startsWith("/stocks"),
   },
   {
     href: "/watchlist",
-    label: "Watchlist",
+    label: "หุ้นที่สนใจ",
     Icon: Star,
     fillWhenActive: true,
     match: (p) => p.startsWith("/watchlist"),
   },
-  { href: "/more", label: "More", Icon: Settings2, match: (p) => p.startsWith("/more") },
+  { href: "/more", label: "เพิ่มเติม", Icon: Settings2, match: (p) => p.startsWith("/more") },
 ];

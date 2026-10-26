@@ -12,7 +12,7 @@ import { useSearch } from "@/services/api/queries";
 
 function ResultsSkeleton() {
   return (
-    <Card aria-busy="true" aria-label="Searching">
+    <Card aria-busy="true" aria-label="กำลังค้นหา">
       <ul className="space-y-3">
         {[0, 1, 2].map((i) => (
           <li key={i} className="flex items-center gap-3">
@@ -46,8 +46,8 @@ export function SearchResults({ query, pending }: { query: string; pending: bool
       <Card>
         <StateMessage
           compact
-          title={`No US stocks match “${query}”`}
-          description="Try a ticker like AAPL or a company name."
+          title={`ไม่พบหุ้นสหรัฐฯ ที่ตรงกับ “${query}”`}
+          description="ลองพิมพ์ชื่อย่อหุ้น เช่น AAPL หรือชื่อบริษัท"
         />
       </Card>
     );
@@ -55,7 +55,7 @@ export function SearchResults({ query, pending }: { query: string; pending: bool
   return (
     <Card className="px-3 py-2">
       <p className="sr-only" role="status">
-        {results.length} result{results.length === 1 ? "" : "s"}
+        พบ {results.length} รายการ
       </p>
       <ul className="divide-y divide-line">
         {results.map((r) => (

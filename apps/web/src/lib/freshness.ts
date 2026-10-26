@@ -10,7 +10,7 @@ export interface FreshnessInfo {
   label: string;
   /** Sentence with the timestamp the label is based on. */
   detail: string;
-  /** Provider timestamp in market time, or "time n/a". */
+  /** Provider timestamp in market time, or "ไม่ระบุเวลา". */
   time: string;
 }
 
@@ -27,10 +27,10 @@ export interface FreshnessInput {
 }
 
 const LATENCY_LABEL: Record<Freshness["latency"], { kind: FreshnessKind; label: string }> = {
-  realtime: { kind: "live", label: "Real-time" },
-  delayed: { kind: "delayed", label: "Delayed" },
-  eod: { kind: "eod", label: "End of day" },
-  unknown: { kind: "unknown", label: "Latency not declared" },
+  realtime: { kind: "live", label: "เรียลไทม์" },
+  delayed: { kind: "delayed", label: "ล่าช้า" },
+  eod: { kind: "eod", label: "ราคาปิดสิ้นวัน" },
+  unknown: { kind: "unknown", label: "ไม่ระบุความล่าช้า" },
 };
 
 /**
@@ -41,27 +41,27 @@ const LATENCY_LABEL: Record<Freshness["latency"], { kind: FreshnessKind; label: 
  */
 export function describeFreshness(input: FreshnessInput): FreshnessInfo {
   const { freshness, isMarketOpen, now, online, receivedAt, staleAfterMs } = input;
-  const time = freshness.asOf ? formatMarketTime(freshness.asOf, now) : "time n/a";
-  const asOf = freshness.asOf ? `as of ${time}` : "update time not reported";
-  const fetched = `fetched ${formatMarketTime(freshness.fetchedAt, now)}`;
+  const time = freshness.asOf ? formatMarketTime(freshness.asOf, now) : "ไม่ระบุเวลา";
+  const asOf = freshness.asOf ? `ณ ${time}` : "(ไม่ได้ระบุเวลาอัปเดต)";
+  const fetched = `ดึงข้อมูลเมื่อ ${formatMarketTime(freshness.fetchedAt, now)}`;
 
   if (!online) {
-    return { kind: "stale", label: "Offline", detail: `Offline · showing data ${asOf}`, time };
+    return { kind: "stale", label: "ออฟไลน์", detail: `ออฟไลน์ · แสดงข้อมูล ${asOf}`, time };
   }
   if (freshness.stale) {
     return {
       kind: "stale",
-      label: "Stale",
-      detail: `Provider unavailable · showing data ${asOf} (${fetched})`,
+      label: "ข้อมูลเก่า",
+      detail: `ผู้ให้บริการไม่พร้อมใช้งาน · แสดงข้อมูล ${asOf} (${fetched})`,
       time,
     };
   }
   if (now.getTime() - receivedAt > staleAfterMs) {
-    return { kind: "stale", label: "Stale", detail: `Not refreshed recently · ${asOf}`, time };
+    return { kind: "stale", label: "ข้อมูลเก่า", detail: `ไม่ได้รีเฟรชมาสักพัก · ${asOf}`, time };
   }
   if (isMarketOpen === false) {
-    const last = freshness.asOf ? `Last update ${time}` : "Last update time not reported";
-    return { kind: "closed", label: "Market closed", detail: last, time };
+    const last = freshness.asOf ? `อัปเดตล่าสุด ${time}` : "ไม่ได้ระบุเวลาอัปเดตล่าสุด";
+    return { kind: "closed", label: "ตลาดปิด", detail: last, time };
   }
   const { kind, label } = LATENCY_LABEL[freshness.latency] ?? LATENCY_LABEL.unknown;
   return { kind, label, detail: `${label} · ${asOf}`, time };

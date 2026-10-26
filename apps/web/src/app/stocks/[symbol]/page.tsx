@@ -18,7 +18,7 @@ function parse(raw: string): string | null {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const symbol = parse((await params).symbol);
-  return { title: symbol ?? "Not found" };
+  return { title: symbol ?? "ไม่พบหุ้น" };
 }
 
 export default async function StockPage({ params }: Props) {

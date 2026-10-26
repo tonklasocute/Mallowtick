@@ -12,14 +12,14 @@ describe.each([
   ["SideNav", SideNav],
 ])("%s", (_name, Nav) => {
   it.each([
-    ["/", "Discover"],
-    ["/stocks/AAPL", "Discover"],
-    ["/watchlist", "Watchlist"],
-    ["/more", "More"],
+    ["/", "สำรวจ"],
+    ["/stocks/AAPL", "สำรวจ"],
+    ["/watchlist", "หุ้นที่สนใจ"],
+    ["/more", "เพิ่มเติม"],
   ])("marks %s as %s", (path, active) => {
     pathname.current = path;
     render(<Nav />);
-    const nav = screen.getByRole("navigation", { name: "Primary" });
+    const nav = screen.getByRole("navigation", { name: "เมนูหลัก" });
     const current = within(nav)
       .getAllByRole("link")
       .filter((l) => l.getAttribute("aria-current") === "page");

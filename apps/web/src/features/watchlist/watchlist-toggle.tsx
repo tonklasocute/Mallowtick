@@ -9,7 +9,7 @@ import { useWatchlist } from "./use-watchlist";
 export function WatchlistToggle({ symbol, className }: { symbol: string; className?: string }) {
   const wl = useWatchlist();
   const saved = wl.has(symbol);
-  const label = saved ? `Remove ${symbol} from watchlist` : `Add ${symbol} to watchlist`;
+  const label = saved ? `นำ ${symbol} ออกจากหุ้นที่สนใจ` : `เพิ่ม ${symbol} ในหุ้นที่สนใจ`;
   return (
     <button
       type="button"

@@ -12,7 +12,12 @@ import type { LabeledLevel } from "@/lib/levels";
 import type { useLevels } from "@/services/api/queries";
 import type { ChartRange } from "@/types/api";
 
-import { RANGE_LABELS } from "./chart-panel";
+import { intervalLabel, RANGE_LABELS } from "./chart-panel";
+
+const TYPE_LABELS: Record<LabeledLevel["type"], string> = {
+  support: "แนวรับ",
+  resistance: "แนวต้าน",
+};
 
 interface KeyLevelsProps {
   range: ChartRange;
@@ -28,7 +33,7 @@ function StrengthBar({ value, type }: { value: number; type: LabeledLevel["type"
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={pct}
-      aria-label="Strength"
+      aria-label="ความแรง"
       className="block h-1.5 w-14 overflow-hidden rounded-full bg-cream-deep"
     >
       <span
@@ -48,7 +53,7 @@ export function KeyLevels({ range, query, levels }: KeyLevelsProps) {
   let body: ReactNode;
   if (isPending) {
     body = (
-      <div aria-busy="true" aria-label="Calculating levels" className="space-y-2">
+      <div aria-busy="true" aria-label="กำลังคำนวณแนวรับ-แนวต้าน" className="space-y-2">
         {[0, 1, 2].map((i) => (
           <Skeleton key={i} className="h-9 w-full" />
         ))}
@@ -60,40 +65,38 @@ export function KeyLevels({ range, query, levels }: KeyLevelsProps) {
     body = (
       <StateMessage
         compact
-        title="Not enough history"
-        description={`Only ${data.candlesUsed} valid candles in this range — at least ${data.method.parameters.swingWindow * 2 + 1} are needed to confirm a swing.`}
+        title="ข้อมูลย้อนหลังไม่พอ"
+        description={`ช่วงนี้มีแท่งเทียนที่ใช้ได้เพียง ${data.candlesUsed} แท่ง ต้องมีอย่างน้อย ${data.method.parameters.swingWindow * 2 + 1} แท่งจึงจะยืนยันจุดสวิงได้`}
       />
     );
   } else if (levels.length === 0) {
     body = (
       <StateMessage
         compact
-        title="No clear levels in this range"
-        description="No confirmed swing highs or lows were found. Try a longer range."
+        title="ไม่พบแนวรับ-แนวต้านที่ชัดเจนในช่วงนี้"
+        description="ไม่พบจุดสวิงสูงหรือต่ำที่ยืนยันแล้ว ลองเลือกช่วงเวลาที่ยาวขึ้น"
       />
     );
   } else {
     body = (
       <table className="w-full text-sm">
-        <caption className="sr-only">
-          Support and resistance levels for the {RANGE_LABELS[range]} range
-        </caption>
+        <caption className="sr-only">แนวรับและแนวต้านในช่วง {RANGE_LABELS[range]}</caption>
         <thead className="text-left text-[11px] text-slate">
           <tr>
             <th scope="col" className="pb-1 font-medium">
-              Level
+              ระดับ
             </th>
             <th scope="col" className="pb-1 text-right font-medium">
-              Price
+              ราคา
             </th>
             <th scope="col" className="pb-1 text-right font-medium">
-              From last
+              ห่างจากราคาล่าสุด
             </th>
             <th scope="col" className="pb-1 text-right font-medium">
-              Touches
+              แตะ (ครั้ง)
             </th>
             <th scope="col" className="pb-1 pl-3 font-medium">
-              Strength
+              ความแรง
             </th>
           </tr>
         </thead>
@@ -111,7 +114,7 @@ export function KeyLevels({ range, query, levels }: KeyLevelsProps) {
                 >
                   {l.label}
                 </span>
-                <span className="sr-only"> {l.type}</span>
+                <span className="sr-only"> {TYPE_LABELS[l.type]}</span>
               </th>
               <td className="tabular py-2 text-right font-semibold text-ink">
                 {formatNumber(l.price)}
@@ -133,17 +136,18 @@ export function KeyLevels({ range, query, levels }: KeyLevelsProps) {
   return (
     <Card>
       <div className="mb-2 flex items-center justify-between">
-        <CardTitle>Key levels</CardTitle>
-        <Badge tone="sky">{RANGE_LABELS[range]} · calculated</Badge>
+        <CardTitle>แนวรับ-แนวต้านสำคัญ</CardTitle>
+        <Badge tone="sky">{RANGE_LABELS[range]} · ค่าที่คำนวณ</Badge>
       </div>
       {body}
       {data && data.status === "ok" && (
         <p className="mt-3 text-[11px] leading-relaxed text-slate">
-          Calculated by Mallowtick from {data.candlesUsed} {data.interval} candles (last bar{" "}
-          {formatBarTime(data.asOf, data.interval)}). Confirmed swing highs/lows (±
-          {data.method.parameters.swingWindow} bars) clustered within{" "}
-          {data.method.parameters.clusterAtrMultiple}× ATR({data.method.parameters.atrPeriod}) ={" "}
-          {formatNumber(data.tolerance)}, scored by touches, recency and reaction. {data.disclaimer}
+          คำนวณโดย Mallowtick จากแท่งเทียน {intervalLabel(data.interval)} จำนวน {data.candlesUsed}{" "}
+          แท่ง (แท่งล่าสุด {formatBarTime(data.asOf, data.interval)}) ใช้จุดสวิงสูง/ต่ำที่ยืนยันแล้ว
+          (±{data.method.parameters.swingWindow} แท่ง) จัดกลุ่มในระยะ{" "}
+          {data.method.parameters.clusterAtrMultiple}× ATR(
+          {data.method.parameters.atrPeriod}) = {formatNumber(data.tolerance)}{" "}
+          ให้คะแนนจากจำนวนครั้งที่แตะ ความใหม่ และแรงเด้งของราคา {data.disclaimer}
         </p>
       )}
     </Card>

@@ -42,14 +42,14 @@ describe("MarketOverview", () => {
   it("shows a loading skeleton first", () => {
     mockOverview(() => ok(overview));
     renderWithProviders(<MarketOverview />);
-    expect(screen.getByLabelText("Loading market overview")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByLabelText("กำลังโหลดภาพรวมตลาด")).toHaveAttribute("aria-busy", "true");
   });
 
   it("renders benchmarks and popular stocks from the API", async () => {
     mockOverview(() => ok(overview));
     renderWithProviders(<MarketOverview />);
 
-    const benchmarks = await screen.findByRole("region", { name: "Market benchmarks" });
+    const benchmarks = await screen.findByRole("region", { name: "ดัชนีอ้างอิงตลาด" });
     expect(within(benchmarks).getByText("$759.97")).toBeInTheDocument();
     expect(within(benchmarks).getByRole("link", { name: /QQQ/ })).toHaveAttribute(
       "href",
@@ -57,7 +57,7 @@ describe("MarketOverview", () => {
     );
     expect(within(benchmarks).getByText("-0.01%", { exact: false })).toBeInTheDocument();
 
-    const popular = screen.getByRole("region", { name: "Popular stocks" });
+    const popular = screen.getByRole("region", { name: "หุ้นยอดนิยม" });
     expect(within(popular).getByRole("link", { name: /AAPL.*Apple Inc\./ })).toBeInTheDocument();
     expect(document.querySelector("polyline")).toBeNull();
   });
@@ -66,36 +66,38 @@ describe("MarketOverview", () => {
     mockOverview(() => ok(overview));
     renderWithProviders(<MarketOverview />);
 
-    const benchmarks = await screen.findByRole("region", { name: "Market benchmarks" });
+    const benchmarks = await screen.findByRole("region", { name: "ดัชนีอ้างอิงตลาด" });
     const dia = within(benchmarks).getByText("DIA").closest("section")!;
-    expect(within(dia).getByText("Unavailable")).toBeInTheDocument();
-    expect(within(dia).getByText("Rate limit reached")).toBeInTheDocument();
+    expect(within(dia).getByText("ไม่มีข้อมูล")).toBeInTheDocument();
+    expect(within(dia).getByText("เกินโควตาการเรียกข้อมูล")).toBeInTheDocument();
     expect(within(dia).queryByText(/\$/)).toBeNull();
 
-    const tsla = within(screen.getByRole("region", { name: "Popular stocks" }))
+    const tsla = within(screen.getByRole("region", { name: "หุ้นยอดนิยม" }))
       .getByRole("link", { name: /^TSLA/ })
       .closest("li")!;
-    expect(within(tsla).getByText("Symbol not found")).toBeInTheDocument();
+    expect(within(tsla).getByText("ไม่พบหุ้นนี้")).toBeInTheDocument();
     expect(within(tsla).queryByText(/\$/)).toBeNull();
   });
 
   it("explains a missing provider instead of showing prices", async () => {
     mockOverview(() => apiError(503, "provider_not_configured"));
     renderWithProviders(<MarketOverview />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Data provider not configured");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "ยังไม่ได้ตั้งค่าผู้ให้บริการข้อมูล",
+    );
     expect(screen.queryByText(/\$\d/)).toBeNull();
   });
 
   it("offers a retry for transient failures", async () => {
     mockOverview(() => apiError(502, "provider_unavailable"));
     renderWithProviders(<MarketOverview />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Market data unavailable");
-    expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("โหลดข้อมูลตลาดไม่ได้");
+    expect(screen.getByRole("button", { name: /ลองใหม่/ })).toBeInTheDocument();
   });
 
   it("shows an empty state when nothing is configured", async () => {
     mockOverview(() => ok({ benchmarks: [], popular: [], unavailable: [] }));
     renderWithProviders(<MarketOverview />);
-    expect(await screen.findByText("Search to get started")).toBeInTheDocument();
+    expect(await screen.findByText("เริ่มต้นด้วยการค้นหาหุ้น")).toBeInTheDocument();
   });
 });

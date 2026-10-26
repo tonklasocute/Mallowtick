@@ -37,6 +37,6 @@ describe("LocalStorageWatchlistRepository", () => {
   });
 
   it("describes itself as device-local", () => {
-    expect(new LocalStorageWatchlistRepository().storageDescription).toMatch(/this device only/i);
+    expect(new LocalStorageWatchlistRepository().storageDescription).toMatch(/อุปกรณ์นี้เท่านั้น/);
   });
 });

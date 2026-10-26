@@ -12,19 +12,19 @@ interface PriceChangeProps {
 }
 
 const STYLES = {
-  up: { text: "text-up", pill: "bg-up-soft text-up", Icon: ArrowUpRight, word: "Up" },
-  down: { text: "text-down", pill: "bg-down-soft text-down", Icon: ArrowDownRight, word: "Down" },
+  up: { text: "text-up", pill: "bg-up-soft text-up", Icon: ArrowUpRight, word: "ขึ้น" },
+  down: { text: "text-down", pill: "bg-down-soft text-down", Icon: ArrowDownRight, word: "ลง" },
   flat: {
     text: "text-slate-strong",
     pill: "bg-cream-deep text-slate-strong",
     Icon: Minus,
-    word: "Unchanged",
+    word: "ไม่เปลี่ยนแปลง",
   },
   unknown: {
     text: "text-slate",
     pill: "bg-cream-deep text-slate",
     Icon: Minus,
-    word: "Change unavailable",
+    word: "ไม่มีข้อมูลการเปลี่ยนแปลง",
   },
 } as const;
 

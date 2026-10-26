@@ -8,40 +8,39 @@ import { isApiError } from "@/services/api/client";
 
 const COPY: Record<string, { title: string; description: string }> = {
   provider_not_configured: {
-    title: "Data provider not configured",
+    title: "ยังไม่ได้ตั้งค่าผู้ให้บริการข้อมูล",
     description:
-      "Set TWELVEDATA_API_KEY on the Mallowtick API server to load real market data. No sample prices are shown in the meantime.",
+      "ตั้งค่า TWELVEDATA_API_KEY ที่เซิร์ฟเวอร์ API ของ Mallowtick เพื่อโหลดข้อมูลตลาดจริง ระหว่างนี้จะไม่แสดงราคาตัวอย่างใด ๆ",
   },
   rate_limited: {
-    title: "Taking a short breather",
-    description:
-      "The market data plan's rate limit was reached. Please try again in about a minute.",
+    title: "ขอพักหายใจแป๊บนึง",
+    description: "เรียกข้อมูลเกินโควตาของแพ็กเกจข้อมูลตลาดแล้ว ลองใหม่อีกครั้งในอีกประมาณ 1 นาที",
   },
   not_found: {
-    title: "No data for this symbol",
-    description: "Check the ticker, or search for the company by name.",
+    title: "ไม่พบข้อมูลของหุ้นตัวนี้",
+    description: "ตรวจสอบชื่อย่อหุ้น หรือลองค้นหาด้วยชื่อบริษัท",
   },
   provider_not_entitled: {
-    title: "Not included in the data plan",
-    description: "The configured market data plan doesn't include this data.",
+    title: "ข้อมูลนี้ไม่อยู่ในแพ็กเกจ",
+    description: "แพ็กเกจข้อมูลตลาดที่ตั้งค่าไว้ไม่ครอบคลุมข้อมูลนี้",
   },
   provider_auth_failed: {
-    title: "Data provider rejected the API key",
-    description: "Check TWELVEDATA_API_KEY on the API server.",
+    title: "ผู้ให้บริการข้อมูลปฏิเสธ API key",
+    description: "ตรวจสอบ TWELVEDATA_API_KEY ที่เซิร์ฟเวอร์ API",
   },
   network_error: {
-    title: "You seem to be offline",
-    description: "Check your connection and try again.",
+    title: "ดูเหมือนคุณจะออฟไลน์อยู่",
+    description: "ตรวจสอบการเชื่อมต่อแล้วลองใหม่อีกครั้ง",
   },
   api_unreachable: {
-    title: "Can't reach the Mallowtick API",
-    description: "The API server isn't responding right now.",
+    title: "เชื่อมต่อ API ของ Mallowtick ไม่ได้",
+    description: "เซิร์ฟเวอร์ API ไม่ตอบสนองในขณะนี้",
   },
 };
 
 const FALLBACK = {
-  title: "Market data unavailable",
-  description: "Something went wrong while loading market data.",
+  title: "โหลดข้อมูลตลาดไม่ได้",
+  description: "เกิดข้อผิดพลาดระหว่างโหลดข้อมูลตลาด",
 };
 
 export function errorCopy(error: unknown) {
@@ -69,7 +68,7 @@ export function ApiErrorState({
       action={
         onRetry && code !== "provider_not_configured" ? (
           <Button onClick={onRetry}>
-            <RotateCw aria-hidden className="size-4" /> Try again
+            <RotateCw aria-hidden className="size-4" /> ลองใหม่
           </Button>
         ) : undefined
       }

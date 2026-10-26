@@ -24,7 +24,7 @@ export function UnavailableQuoteRow({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block font-display text-[15px] font-semibold text-ink">{symbol}</span>
-          <span className="block text-xs text-slate">Price unavailable</span>
+          <span className="block text-xs text-slate">ไม่มีข้อมูลราคา</span>
         </span>
         <span className="shrink-0 rounded-full bg-cream-deep px-2 py-0.5 text-[11px] font-semibold text-slate-strong">
           {reason}

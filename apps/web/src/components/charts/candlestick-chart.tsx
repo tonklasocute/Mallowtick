@@ -157,8 +157,8 @@ export function CandlestickChart({
   const first = series.candles[0];
   const last = series.candles[series.candles.length - 1];
   const summary = last
-    ? `${series.symbol} candlestick chart, ${series.candles.length} bars from ${formatMarketDate(first?.time)} to ${formatMarketDate(last.time)}, last close ${formatNumber(last.close)}.`
-    : `${series.symbol} chart has no data.`;
+    ? `กราฟแท่งเทียน ${series.symbol} จำนวน ${series.candles.length} แท่ง ตั้งแต่ ${formatMarketDate(first?.time)} ถึง ${formatMarketDate(last.time)} ราคาปิดล่าสุด ${formatNumber(last.close)}`
+    : `กราฟ ${series.symbol} ไม่มีข้อมูล`;
 
   return (
     <div ref={containerRef} role="img" aria-label={summary} style={{ height }} className="w-full" />

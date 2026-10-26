@@ -21,7 +21,7 @@ import { isApiError } from "@/services/api/client";
 import { useQuotes, useSparkline } from "@/services/api/queries";
 import type { Quote } from "@/types/api";
 
-import { useWatchlist, useWatchlistRepository } from "./use-watchlist";
+import { useStorageDescription, useWatchlist } from "./use-watchlist";
 
 function RowSparkline({ quote }: { quote: Quote }) {
   const { data } = useSparkline(quote.symbol);
@@ -37,7 +37,7 @@ function RowSparkline({ quote }: { quote: Quote }) {
 
 export function WatchlistScreen() {
   const wl = useWatchlist();
-  const repo = useWatchlistRepository();
+  const storage = useStorageDescription();
   const [editing, setEditing] = useState(false);
   const quotes = useQuotes(wl.symbols);
 
@@ -48,12 +48,12 @@ export function WatchlistScreen() {
   return (
     <PageContainer>
       <PageHeader
-        title="Watchlist"
+        title="หุ้นที่สนใจ"
         trailing={
           <>
             {hasSymbols && (
               <IconButton
-                label={editing ? "Done editing" : "Edit watchlist"}
+                label={editing ? "แก้ไขเสร็จแล้ว" : "แก้ไขรายการ"}
                 aria-pressed={editing}
                 onClick={() => setEditing((e) => !e)}
               >
@@ -66,8 +66,8 @@ export function WatchlistScreen() {
             )}
             <Link
               href="/#search"
-              aria-label="Add a stock"
-              title="Add a stock"
+              aria-label="เพิ่มหุ้น"
+              title="เพิ่มหุ้น"
               className="inline-flex size-10 items-center justify-center rounded-full text-mint-deep hover:bg-cream-deep"
             >
               <Plus aria-hidden className="size-6" />
@@ -83,7 +83,7 @@ export function WatchlistScreen() {
         )}
 
         {wl.isLoading ? (
-          <Card aria-busy="true" aria-label="Loading watchlist" className="space-y-3">
+          <Card aria-busy="true" aria-label="กำลังโหลดรายการหุ้นที่สนใจ" className="space-y-3">
             {[0, 1, 2].map((i) => (
               <Skeleton key={i} className="h-12 w-full" />
             ))}
@@ -91,14 +91,14 @@ export function WatchlistScreen() {
         ) : !hasSymbols ? (
           <Card>
             <StateMessage
-              title="Your watchlist is empty"
-              description="Tap the star on any stock to keep an eye on it here."
+              title="ยังไม่มีหุ้นที่สนใจ"
+              description="แตะรูปดาวที่หุ้นตัวไหนก็ได้ เพื่อเก็บไว้ติดตามที่นี่"
               action={
                 <Link
                   href="/#search"
                   className="inline-flex min-h-10 items-center rounded-full bg-mint-deep px-4 text-sm font-semibold text-surface"
                 >
-                  Discover stocks
+                  สำรวจหุ้น
                 </Link>
               }
             />
@@ -114,7 +114,7 @@ export function WatchlistScreen() {
                   const q = bySymbol.get(symbol);
                   const remove = editing ? (
                     <IconButton
-                      label={`Remove ${symbol}`}
+                      label={`ลบ ${symbol}`}
                       className="text-down"
                       onClick={() => wl.remove(symbol)}
                     >
@@ -157,7 +157,7 @@ export function WatchlistScreen() {
             </Card>
           </>
         )}
-        <p className="px-1 text-[11px] text-slate">{repo.storageDescription}</p>
+        {storage && <p className="px-1 text-[11px] text-slate">{storage}</p>}
       </main>
     </PageContainer>
   );

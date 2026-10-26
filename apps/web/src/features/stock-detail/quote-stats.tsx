@@ -4,13 +4,13 @@ import type { Quote } from "@/types/api";
 
 export function QuoteStats({ quote }: { quote: Quote }) {
   const rows: [string, string][] = [
-    ["Open", formatNumber(quote.open)],
-    ["High", formatNumber(quote.high)],
-    ["Low", formatNumber(quote.low)],
-    ["Prev. close", formatNumber(quote.previousClose)],
-    ["Volume", formatCompact(quote.volume)],
+    ["ราคาเปิด", formatNumber(quote.open)],
+    ["สูงสุด", formatNumber(quote.high)],
+    ["ต่ำสุด", formatNumber(quote.low)],
+    ["ปิดครั้งก่อน", formatNumber(quote.previousClose)],
+    ["ปริมาณซื้อขาย", formatCompact(quote.volume)],
     [
-      "52-week range",
+      "ช่วง 52 สัปดาห์",
       quote.fiftyTwoWeek
         ? `${formatNumber(quote.fiftyTwoWeek.low)} – ${formatNumber(quote.fiftyTwoWeek.high)}`
         : "—",
@@ -18,7 +18,7 @@ export function QuoteStats({ quote }: { quote: Quote }) {
   ];
   return (
     <Card>
-      <CardTitle className="mb-2">Latest session</CardTitle>
+      <CardTitle className="mb-2">รอบการซื้อขายล่าสุด</CardTitle>
       <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
         {rows.map(([k, v]) => (
           <div

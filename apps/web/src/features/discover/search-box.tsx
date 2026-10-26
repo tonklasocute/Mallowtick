@@ -19,7 +19,7 @@ export function SearchBox({ value, onChange }: SearchBoxProps) {
   return (
     <form role="search" onSubmit={(e) => e.preventDefault()} className="relative">
       <label htmlFor="stock-search" className="sr-only">
-        Search US stocks by ticker or company name
+        ค้นหาหุ้นสหรัฐฯ ด้วยชื่อย่อหรือชื่อบริษัท
       </label>
       <Search
         aria-hidden
@@ -35,7 +35,7 @@ export function SearchBox({ value, onChange }: SearchBoxProps) {
         autoCapitalize="characters"
         spellCheck={false}
         maxLength={40}
-        placeholder="Search ticker or company"
+        placeholder="ค้นหาชื่อย่อหุ้นหรือชื่อบริษัท"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => e.key === "Escape" && onChange("")}
@@ -44,7 +44,7 @@ export function SearchBox({ value, onChange }: SearchBoxProps) {
       {value && (
         <button
           type="button"
-          aria-label="Clear search"
+          aria-label="ล้างคำค้นหา"
           onClick={() => {
             onChange("");
             inputRef.current?.focus();

@@ -27,7 +27,7 @@ export function DiscoverScreen() {
               <Logo />
             </span>
             <h1 className="sr-only font-display text-2xl font-bold text-ink lg:not-sr-only">
-              Discover
+              สำรวจ
             </h1>
           </>
         }
@@ -38,7 +38,7 @@ export function DiscoverScreen() {
           <div className="space-y-2">
             <SearchBox value={query} onChange={setQuery} />
             <p className="hidden px-1 text-xs text-slate lg:block">
-              Try a ticker like AAPL or BRK.B, or a company name like “Microsoft”.
+              ลองพิมพ์ชื่อย่อหุ้น เช่น AAPL หรือ BRK.B หรือชื่อบริษัท เช่น “Microsoft”
             </p>
           </div>
         </div>

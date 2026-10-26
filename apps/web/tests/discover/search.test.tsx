@@ -34,7 +34,7 @@ describe("Discover search", () => {
     );
     renderWithProviders(<DiscoverScreen />);
 
-    await userEvent.type(screen.getByRole("searchbox", { name: /search us stocks/i }), "apple");
+    await userEvent.type(screen.getByRole("searchbox", { name: /ค้นหาหุ้นสหรัฐฯ/ }), "apple");
 
     expect(await screen.findByRole("link", { name: /AAPL.*Apple Inc\./ })).toHaveAttribute(
       "href",
@@ -42,14 +42,14 @@ describe("Discover search", () => {
     );
     const searchCalls = fetchMock.mock.calls.filter(([u]) => String(u).includes("/stocks/search"));
     expect(searchCalls).toHaveLength(1); // one request after typing stops, not one per keystroke
-    expect(screen.getByRole("status", { name: "" })).toHaveTextContent("1 result");
+    expect(screen.getByRole("status", { name: "" })).toHaveTextContent("พบ 1 รายการ");
   });
 
   it("shows an empty state when nothing matches", async () => {
     mockApi(() => ok({ query: "zzzz", results: [] }));
     renderWithProviders(<DiscoverScreen />);
     await userEvent.type(screen.getByRole("searchbox"), "zzzz");
-    expect(await screen.findByText(/No US stocks match/)).toBeInTheDocument();
+    expect(await screen.findByText(/ไม่พบหุ้นสหรัฐฯ ที่ตรงกับ/)).toBeInTheDocument();
   });
 
   it("shows an error with retry, then recovers", async () => {
@@ -65,9 +65,9 @@ describe("Discover search", () => {
     renderWithProviders(<DiscoverScreen />);
     await userEvent.type(screen.getByRole("searchbox"), "msft");
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Market data unavailable");
+    expect(await screen.findByRole("alert")).toHaveTextContent("โหลดข้อมูลตลาดไม่ได้");
     fail = false;
-    await userEvent.click(screen.getByRole("button", { name: /try again/i }));
+    await userEvent.click(screen.getByRole("button", { name: /ลองใหม่/ }));
     expect(await screen.findByRole("link", { name: /MSFT/ })).toBeInTheDocument();
   });
 
@@ -75,8 +75,10 @@ describe("Discover search", () => {
     mockApi(() => apiError(503, "provider_not_configured"));
     renderWithProviders(<DiscoverScreen />);
     await userEvent.type(screen.getByRole("searchbox"), "a");
-    expect(await screen.findByRole("alert")).toHaveTextContent("Data provider not configured");
-    expect(screen.queryByRole("button", { name: /try again/i })).not.toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "ยังไม่ได้ตั้งค่าผู้ให้บริการข้อมูล",
+    );
+    expect(screen.queryByRole("button", { name: /ลองใหม่/ })).not.toBeInTheDocument();
   });
 
   it("clears the query and returns to the overview", async () => {
@@ -84,8 +86,8 @@ describe("Discover search", () => {
     renderWithProviders(<DiscoverScreen />);
     const box = screen.getByRole("searchbox");
     await userEvent.type(box, "a");
-    await userEvent.click(screen.getByRole("button", { name: /clear search/i }));
+    await userEvent.click(screen.getByRole("button", { name: /ล้างคำค้นหา/ }));
     expect(box).toHaveValue("");
-    await waitFor(() => expect(screen.getByText(/Search to get started/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/เริ่มต้นด้วยการค้นหาหุ้น/)).toBeInTheDocument());
   });
 });
