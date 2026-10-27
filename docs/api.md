@@ -98,6 +98,14 @@ Needs a vendor that reports performance on its own (Finnhub) and fails with `pro
   "unavailable": [], "freshness": { "provider": "finnhub", … } } }
 ```
 
+### `GET /fx/usd-thb`
+
+How many baht one US dollar costs, for the portfolio's baht view. From Twelve Data `/exchange_rate` (1 credit; Finnhub's forex endpoints answer 403 on the free plan, checked 2026-10-27), cached for 1 hour. Fails with `provider_not_configured` without a vendor that publishes rates; `/health` names it under `sources.fx`.
+
+```json
+{ "data": { "pair": "USD/THB", "rate": 33.7691, "asOf": "2026-10-27T08:58:00Z", "freshness": { "provider": "twelvedata", … } } }
+```
+
 ### `GET /stocks/search?q=apple`
 
 US instruments matching a ticker or company name (up to 10).

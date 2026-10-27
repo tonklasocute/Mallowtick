@@ -14,6 +14,7 @@ export const queryKeys = {
   marketStatus: ["market-status"] as const,
   overview: ["overview"] as const,
   sectors: ["sectors"] as const,
+  usdThb: ["fx", "USD/THB"] as const,
   search: (q: string) => ["search", q.toLowerCase()] as const,
   quote: (symbol: string) => ["quote", symbol] as const,
   quotes: (symbols: string[]) => ["quotes", ...symbols] as const,
@@ -77,6 +78,21 @@ export function useMarketOverview() {
       return ov;
     },
     refetchInterval: QUOTE_REFRESH_MS,
+  });
+}
+
+/**
+ * Baht per US dollar for valuing the portfolio in baht. The server caches it for an hour
+ * (one Twelve Data credit); a failure leaves the portfolio in dollars.
+ */
+export function useUsdThb(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.usdThb,
+    queryFn: ({ signal }) => endpoints.usdThb(signal),
+    enabled,
+    staleTime: 30 * 60_000,
+    refetchInterval: 60 * 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 

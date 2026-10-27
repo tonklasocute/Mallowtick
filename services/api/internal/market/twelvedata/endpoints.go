@@ -309,3 +309,30 @@ func parseCountdown(s string) *int64 {
 	}
 	return &total
 }
+
+// ExchangeRate implements market.FXProvider with one /exchange_rate call (1
+// credit). Checked 2026-10-27: USD/THB is on the free plan, while Finnhub's
+// forex endpoints answer 403.
+func (c *Client) ExchangeRate(ctx context.Context, base, quote string) (market.ExchangeRate, error) {
+	pair := strings.ToUpper(base) + "/" + strings.ToUpper(quote)
+	body, err := c.get(ctx, "/exchange_rate", url.Values{"symbol": {pair}}, 1)
+	if err != nil {
+		return market.ExchangeRate{}, err
+	}
+	var r struct {
+		Rate      num   `json:"rate"`
+		Timestamp int64 `json:"timestamp"`
+	}
+	if err := json.Unmarshal(body, &r); err != nil {
+		return market.ExchangeRate{}, fmt.Errorf("%w: decode exchange_rate: %w", market.ErrUnavailable, err)
+	}
+	if !r.Rate.ok || r.Rate.v <= 0 {
+		return market.ExchangeRate{}, fmt.Errorf("%w: no rate for %s", market.ErrNotFound, pair)
+	}
+	out := market.ExchangeRate{Pair: pair, Rate: r.Rate.v}
+	if r.Timestamp > 0 {
+		t := time.Unix(r.Timestamp, 0).UTC()
+		out.AsOf = &t
+	}
+	return out, nil
+}

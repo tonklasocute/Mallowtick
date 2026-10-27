@@ -90,6 +90,16 @@
   --color-spot-muted: #9fc9b6;
   --color-spot-text: #e6f2ec;
   --color-gold: #ffc94d;
+  /*
+   * Portfolio allocation slices, largest first. Hue and lightness both differ, and every
+   * slice is labelled, so colour is never the only cue.
+   */
+  --color-slice-1: #1d3b32;
+  --color-slice-2: #25a874;
+  --color-slice-3: #7fd3a8;
+  --color-slice-4: #3fa7e8;
+  --color-slice-5: #f2a31f;
+  --color-slice-6: #ee6a86;
 
   /* Nunito for Latin and numbers, Mitr for Thai (set up in app/layout.tsx). */
   --font-sans:

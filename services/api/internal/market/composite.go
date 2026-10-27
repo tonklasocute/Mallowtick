@@ -16,10 +16,11 @@ const (
 	KindStatus       DataKind = "status"
 	KindEarnings     DataKind = "earnings"
 	KindFundamentals DataKind = "fundamentals"
+	KindFX           DataKind = "fx"
 )
 
 // DataKinds lists every kind in display order.
-var DataKinds = []DataKind{KindQuotes, KindSearch, KindCandles, KindStatus, KindEarnings, KindFundamentals}
+var DataKinds = []DataKind{KindQuotes, KindSearch, KindCandles, KindStatus, KindEarnings, KindFundamentals, KindFX}
 
 // MultiSource is implemented by providers that combine vendors. SourceFor
 // returns the vendor behind a kind of data, so freshness metadata names the
@@ -141,6 +142,20 @@ type FundamentalsProvider interface {
 	Recommendations(ctx context.Context, symbol Symbol) ([]RecommendationTrend, error)
 }
 
+// ExchangeRate is the price of one unit of the pair's base currency in its
+// quote currency (USD/THB 33.78: one dollar costs 33.78 baht).
+type ExchangeRate struct {
+	Pair string  `json:"pair"`
+	Rate float64 `json:"rate"`
+	// AsOf is the vendor's time of the rate, nil when not reported.
+	AsOf *time.Time `json:"asOf"`
+}
+
+// FXProvider is implemented by vendors that publish currency exchange rates.
+type FXProvider interface {
+	ExchangeRate(ctx context.Context, base, quote string) (ExchangeRate, error)
+}
+
 // PerformanceProvider is implemented by vendors that report price performance
 // on its own, without the names and profiles that quotes and fundamentals look
 // up. Lists that show only numbers (the sectors) use it to save those calls.
@@ -158,7 +173,8 @@ type Composite struct {
 	// QuoteSource serves quotes, search and, when it implements the matching
 	// interfaces, earnings and fundamentals.
 	QuoteSource Provider
-	// BarSource serves candles and market status.
+	// BarSource serves candles, market status and, when it implements
+	// FXProvider, exchange rates.
 	BarSource Provider
 }
 
@@ -167,6 +183,7 @@ var (
 	_ MultiSource          = Composite{}
 	_ EarningsProvider     = Composite{}
 	_ FundamentalsProvider = Composite{}
+	_ FXProvider           = Composite{}
 )
 
 func (c Composite) Name() string     { return c.QuoteSource.Name() + "+" + c.BarSource.Name() }
@@ -175,7 +192,7 @@ func (c Composite) Configured() bool { return c.QuoteSource.Configured() && c.Ba
 // SourceFor implements MultiSource.
 func (c Composite) SourceFor(kind DataKind) Provider {
 	switch kind {
-	case KindCandles, KindStatus:
+	case KindCandles, KindStatus, KindFX:
 		return c.BarSource
 	default:
 		return c.QuoteSource
@@ -228,4 +245,12 @@ func (c Composite) Recommendations(ctx context.Context, symbol Symbol) ([]Recomm
 		return f.Recommendations(ctx, symbol)
 	}
 	return nil, ErrNotConfigured
+}
+
+// ExchangeRate implements FXProvider through the bar vendor.
+func (c Composite) ExchangeRate(ctx context.Context, base, quote string) (ExchangeRate, error) {
+	if f, ok := c.BarSource.(FXProvider); ok && c.BarSource.Configured() {
+		return f.ExchangeRate(ctx, base, quote)
+	}
+	return ExchangeRate{}, ErrNotConfigured
 }

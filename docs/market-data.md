@@ -84,6 +84,10 @@ Opening a new stock therefore costs about 3 Finnhub calls on top of the quote, w
 - Looking pages up by CIK through Wikidata (`P5531`) works for AAPL (English and Thai pages) but RKLB's CIK maps to an item with no Wikipedia page.
 - Left to decide: summarise the 10-K business section into Thai (untested), or show the industry and website only.
 
+## Exchange rate for the portfolio
+
+The portfolio shows values in baht with `GET /fx/usd-thb`. Checked 2026-10-27 with real keys: Twelve Data `/exchange_rate?symbol=USD/THB` and `/quote?symbol=USD/THB` work on the free plan; Finnhub `/forex/rates` and `/quote?symbol=OANDA:USD_THB` answer 403. The API uses `/exchange_rate` (1 credit) and caches it for 1 hour, about 24 credits a day. Holdings are priced with the same batch quotes as the watchlist: free on Finnhub's per-call budget, but one Twelve Data credit per holding per refresh with Twelve Data alone.
+
 ## What is (and isn't) used
 
 | Need | Twelve Data endpoint | Credits |

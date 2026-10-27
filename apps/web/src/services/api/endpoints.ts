@@ -3,6 +3,7 @@ import type {
   ChartRange,
   EarningsHistory,
   EarningsResult,
+  ExchangeRate,
   Fundamentals,
   Health,
   LevelsResponse,
@@ -25,6 +26,7 @@ export const endpoints = {
   health: (signal?: Signal) => apiGet<Health>("/health", undefined, { signal }),
   marketStatus: (signal?: Signal) => apiGet<MarketStatus>("/market/status", undefined, { signal }),
   overview: (signal?: Signal) => apiGet<MarketOverview>("/market/overview", undefined, { signal }),
+  usdThb: (signal?: Signal) => apiGet<ExchangeRate>("/fx/usd-thb", undefined, { signal }),
   sectors: (signal?: Signal) => apiGet<SectorsResult>("/market/sectors", undefined, { signal }),
   search: (q: string, signal?: Signal) =>
     apiGet<SearchResponse>("/stocks/search", { q }, { signal }),

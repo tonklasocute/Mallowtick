@@ -53,6 +53,14 @@ export interface MarketOverview {
   unavailable: UnavailableSymbol[];
 }
 
+/** How many baht one US dollar costs (`/fx/usd-thb`). */
+export interface ExchangeRate {
+  pair: string;
+  rate: number;
+  asOf: string | null;
+  freshness: Freshness;
+}
+
 /** Periods of `/market/sectors` returns: the session, 5 sessions, 13 weeks, year to date, 52 weeks. */
 export type SectorPeriod = "1d" | "1w" | "3m" | "ytd" | "1y";
 

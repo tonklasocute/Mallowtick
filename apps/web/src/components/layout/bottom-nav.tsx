@@ -15,7 +15,8 @@ export function BottomNav() {
       aria-label="เมนูหลัก"
       className="fixed inset-x-4 bottom-(--nav-offset) z-20 mx-auto max-w-md rounded-full border border-line bg-surface/95 shadow-float backdrop-blur-sm lg:hidden"
     >
-      <ul className="flex h-(--nav-height) items-center justify-around gap-1 px-2">
+      {/* Four tabs don't fit side by side on a phone: the others stack the icon over the label. */}
+      <ul className="flex h-(--nav-height) items-center justify-between gap-0.5 px-2">
         {NAV_ITEMS.map(({ href, label, Icon, match, fillWhenActive }) => {
           const active = match(pathname);
           return (
@@ -24,8 +25,10 @@ export function BottomNav() {
                 href={href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex h-12 items-center gap-1.5 rounded-full px-3 text-[13px] min-[380px]:px-4 whitespace-nowrap transition",
-                  active ? "bg-ink text-surface" : "text-slate hover:text-ink",
+                  "flex items-center rounded-full whitespace-nowrap transition",
+                  active
+                    ? "h-12 gap-1.5 bg-ink px-3.5 text-[13px] text-surface min-[380px]:px-4"
+                    : "min-w-14 flex-col gap-0.5 px-1 py-1.5 text-[11px] text-slate hover:text-ink",
                 )}
               >
                 <Icon

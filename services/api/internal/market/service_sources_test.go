@@ -230,3 +230,47 @@ func TestEarningsHistoryAndRecommendationsAreCached(t *testing.T) {
 		t.Fatalf("both should be cached; calls = %d, %d", quotes.earningsFake.calls.Load(), quotes.calls.Load())
 	}
 }
+
+// fxFake is a bar vendor that, like Twelve Data, publishes exchange rates.
+type fxFake struct {
+	namedFake
+	calls atomic.Int32
+}
+
+func (f *fxFake) ExchangeRate(_ context.Context, base, quote string) (ExchangeRate, error) {
+	f.calls.Add(1)
+	return ExchangeRate{Pair: base + "/" + quote, Rate: 33.78}, nil
+}
+
+func TestExchangeRateComesFromTheBarVendorAndIsCached(t *testing.T) {
+	clk := &testClock{t: time.Unix(0, 0)}
+	bars := &fxFake{namedFake: namedFake{&fakeProvider{}, "twelvedata"}}
+	quotes := namedFake{&fakeProvider{}, "finnhub"}
+	s := newTestService(Composite{QuoteSource: quotes, BarSource: bars}, clk)
+	for range 2 {
+		r, err := s.ExchangeRate(context.Background())
+		if err != nil || r.Pair != "USD/THB" || r.Rate != 33.78 || r.Freshness.Provider != "twelvedata" {
+			t.Fatalf("unexpected result %+v %v", r, err)
+		}
+	}
+	if bars.calls.Load() != 1 {
+		t.Fatalf("the rate should be cached; calls = %d", bars.calls.Load())
+	}
+	clk.advance(fxTTL + time.Second)
+	if _, err := s.ExchangeRate(context.Background()); err != nil || bars.calls.Load() != 2 {
+		t.Fatalf("an expired rate should be refetched; calls = %d, err = %v", bars.calls.Load(), err)
+	}
+	if info := s.ProviderInfo(); info.Sources[KindFX].Name != "twelvedata" {
+		t.Fatalf("health should name the fx vendor: %+v", info.Sources)
+	}
+}
+
+func TestExchangeRateNeedsAnFXVendor(t *testing.T) {
+	s := newTestService(&fakeProvider{}, &testClock{t: time.Unix(0, 0)})
+	if _, err := s.ExchangeRate(context.Background()); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("got %v, want ErrNotConfigured", err)
+	}
+	if _, ok := s.ProviderInfo().Sources[KindFX]; ok {
+		t.Fatal("a vendor without exchange rates should not be listed for fx")
+	}
+}
