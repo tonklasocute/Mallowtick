@@ -105,27 +105,42 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
 - The design's bell button and "ดูทั้งหมด" link are omitted: there are no notifications or
   full popular list yet.
 
-## Local development (Windows)
+## Local development
+
+The project is worked on from both a Windows PC and a Mac.
+
+- Ports: web 3000, API 8080. `make dev-api` loads `services/api/.env` (through bash);
+  `go run ./cmd/api` alone does not, and without a key the API runs with the provider not
+  configured. The API does not hot-reload; restart it after Go changes.
+- `services/api/.env` is gitignored and per machine, so each machine needs its own copy with
+  the Twelve Data and Finnhub keys. Never commit it or print it in logs or output. With
+  Finnhub quotes it uses `QUOTE_CACHE_TTL=60s`. Without `FINNHUB_API_KEY`, Twelve Data serves
+  everything and its 8 credits/min run out quickly. `GET /api/v1/health` shows which vendor
+  serves each kind of data.
+
+### macOS
+
+- pnpm is installed through Homebrew: `make dev-api`, `make dev-web`, `make test`,
+  `make lint`, `make build` work as is.
+- The working copy is LF (`core.autocrlf` unset), so `make lint` (including
+  `format:check`) and `gofmt -l .` are clean. The CRLF issues below do not apply.
+
+### Windows
 
 - pnpm is not installed globally; run it through corepack: `corepack pnpm install`,
-  `corepack pnpm --filter @mallowtick/web dev` (port 3000).
-- API: `go run ./cmd/api` in `services/api` (port 8080). It reads its settings from the
-  environment; `go run` alone does not load `services/api/.env` (`make dev-api` does, through
-  bash). Without a key it runs with the provider not configured. `go run` does not
-  hot-reload; restart after Go changes.
-- `services/api/.env` holds the real Twelve Data and Finnhub keys. It is gitignored; never
-  commit it or print it in logs or output. With Finnhub quotes it uses `QUOTE_CACHE_TTL=60s`.
+  `corepack pnpm --filter @mallowtick/web dev`.
+- API: `go run ./cmd/api` in `services/api`, with the settings in the environment (see above).
 - Git Bash `sed -i` converts CRLF files to LF. Edit with the Edit tool or `perl -pi` instead.
 
 ## Known issues
 
-- `make lint` fails at `format:check`: the working copy is CRLF (`core.autocrlf=true`) and
-  Prettier expects LF, so ~95 files are flagged even when unchanged. To check edited
-  files only: `prettier --check --end-of-line auto <files>`.
-- `services/api/.env` must use LF line endings. `make dev-api` sources it with bash, so a
-  CRLF copy of `.env.example` leaves `\r` on every value and the API key is rejected.
-  Convert with `tr -d '\r'` after copying.
-- `gofmt -l .` lists every Go file for the same CRLF reason. To check a file:
+- Windows only: `make lint` fails at `format:check`: the working copy is CRLF
+  (`core.autocrlf=true`) and Prettier expects LF, so ~95 files are flagged even when
+  unchanged. To check edited files only: `prettier --check --end-of-line auto <files>`.
+- Windows only: `services/api/.env` must use LF line endings. `make dev-api` sources it with
+  bash, so a CRLF copy of `.env.example` leaves `\r` on every value and the API key is
+  rejected. Convert with `tr -d '\r'` after copying.
+- Windows only: `gofmt -l .` lists every Go file for the same CRLF reason. To check a file:
   `tr -d '\r' < file.go | gofmt -d`.
 - Unverified: whether Twelve Data's daily bar for today holds the full-market volume right
   after the close. During the session it holds the same partial volume as the intraday
