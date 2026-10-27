@@ -62,6 +62,10 @@ type Client struct {
 	// logos holds the logo URL per symbol, including "" for symbols without one,
 	// so search results can show logos without fetching whole profiles twice.
 	logos *cache.TTL[string]
+	// searchSlot lets one /search call run at a time. Finnhub answers 429 to a
+	// burst of searches well inside the per-minute allowance (checked 2026-10-27:
+	// 6 at once gave 2 × 429, 6 in a row none), and a 429 marks the whole budget spent.
+	searchSlot chan struct{}
 }
 
 var (
@@ -69,6 +73,7 @@ var (
 	_ market.EarningsProvider     = (*Client)(nil)
 	_ market.RangeProvider        = (*Client)(nil)
 	_ market.FundamentalsProvider = (*Client)(nil)
+	_ market.PerformanceProvider  = (*Client)(nil)
 )
 
 // New validates cfg and returns a client.
@@ -103,6 +108,8 @@ func New(cfg Config) (*Client, error) {
 		info:    cache.New[instrumentInfo](infoTTL, infoTTL, 5000, cfg.Now),
 		ranges:  cache.New[market.Range52](infoTTL, infoTTL, 5000, cfg.Now),
 		logos:   cache.New[string](infoTTL, infoTTL, 5000, cfg.Now),
+
+		searchSlot: make(chan struct{}, 1),
 	}, nil
 }
 

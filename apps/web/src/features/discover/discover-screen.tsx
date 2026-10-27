@@ -11,6 +11,7 @@ import { DiscoverHero } from "./discover-hero";
 import { MarketOverview } from "./market-overview";
 import { SearchBox } from "./search-box";
 import { SearchResults } from "./search-results";
+import { SectorRotation } from "./sector-rotation";
 
 export function DiscoverScreen() {
   const [query, setQuery] = useState("");
@@ -47,7 +48,10 @@ export function DiscoverScreen() {
             <SearchResults query={debounced} pending={debounced !== trimmed} />
           </div>
         ) : (
-          <MarketOverview />
+          <>
+            <MarketOverview />
+            <SectorRotation />
+          </>
         )}
       </main>
     </PageContainer>

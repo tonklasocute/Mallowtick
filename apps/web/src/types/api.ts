@@ -53,6 +53,27 @@ export interface MarketOverview {
   unavailable: UnavailableSymbol[];
 }
 
+/** Periods of `/market/sectors` returns: the session, 5 sessions, 13 weeks, year to date, 52 weeks. */
+export type SectorPeriod = "1d" | "1w" | "3m" | "ytd" | "1y";
+
+/** Price returns in percent per period; null when the vendor reported none. */
+export type PriceReturns = Record<SectorPeriod, number | null>;
+
+export interface SectorPerformance {
+  /** Stable English key such as "technology"; absent for the benchmark. */
+  sector?: string;
+  symbol: string;
+  returns: PriceReturns;
+}
+
+export interface SectorsResult {
+  /** SPY; null when it could not be fetched. */
+  benchmark: SectorPerformance | null;
+  sectors: SectorPerformance[];
+  unavailable: UnavailableSymbol[];
+  freshness: Freshness;
+}
+
 export interface Instrument {
   symbol: string;
   name: string;

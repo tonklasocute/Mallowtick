@@ -75,6 +75,10 @@ func cleanName(s string) string {
 	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s), "-US"))
 }
 
+// nameRetry is how long a profile without a name is kept when the search for
+// the name failed, before the name is looked up again.
+const nameRetry = 2 * time.Minute
+
 // logoWait bounds how long a search waits for logos. They are decoration: past
 // this, or when the call budget is spent, results go out without them.
 const logoWait = 2 * time.Second
@@ -149,10 +153,19 @@ func (c *Client) instrument(ctx context.Context, sym market.Symbol) (instrumentI
 		Industry: p.Industry, Country: p.Country, IPODate: p.IPO, Website: p.Website,
 		Logo: cleanLogo(p.Logo), Shares: scaled(p.Shares, millions),
 	}
+	if info.Currency == "" {
+		info.Currency = "USD" // only US-listed instruments are supported
+	}
 	if info.Name == "" {
 		matches, err := c.search(ctx, string(sym))
 		if err != nil {
-			return instrumentInfo{}, err
+			// The name is an extra. Failing here would also fail Fundamentals, and
+			// every retry would spend the profile call again: with eleven sector
+			// ETFs on a cold start that kept the budget spent (seen 2026-10-27).
+			// Keep the profile and look the name up again a little later.
+			c.log.DebugContext(ctx, "finnhub name lookup failed", slog.String("symbol", string(sym)), slog.Any("error", err))
+			c.info.SetWithTTL(string(sym), info, nameRetry)
+			return info, nil
 		}
 		for _, m := range matches {
 			if strings.EqualFold(m.Symbol, string(sym)) {
@@ -160,9 +173,6 @@ func (c *Client) instrument(ctx context.Context, sym market.Symbol) (instrumentI
 				break
 			}
 		}
-	}
-	if info.Currency == "" {
-		info.Currency = "USD" // only US-listed instruments are supported
 	}
 	c.info.Set(string(sym), info)
 	c.logos.Set(string(sym), info.Logo)
@@ -267,6 +277,25 @@ func benchmarkReturn(stock, relative *float64) *float64 {
 	return &r
 }
 
+// PriceReturns implements market.PerformanceProvider with one /stock/metric
+// call and no profile lookup. The free plan has no one-month return, only
+// month to date (checked 2026-10-27 on the sector ETFs and SPY).
+func (c *Client) PriceReturns(ctx context.Context, sym market.Symbol) (market.PriceReturns, error) {
+	var m struct {
+		Metric struct {
+			Return5D  *float64 `json:"5DayPriceReturnDaily"`
+			Return13W *float64 `json:"13WeekPriceReturnDaily"`
+			ReturnYTD *float64 `json:"yearToDatePriceReturnDaily"`
+			Return1Y  *float64 `json:"52WeekPriceReturnDaily"`
+		} `json:"metric"`
+	}
+	if err := c.get(ctx, "/stock/metric", url.Values{"symbol": {string(sym)}, "metric": {"all"}}, &m); err != nil {
+		return market.PriceReturns{}, err
+	}
+	v := m.Metric
+	return market.PriceReturns{Week: v.Return5D, Quarter: v.Return13W, YTD: v.ReturnYTD, Year: v.Return1Y}, nil
+}
+
 // EarningsHistory implements market.EarningsProvider. The free plan returns
 // the last four quarters.
 func (c *Client) EarningsHistory(ctx context.Context, sym market.Symbol) ([]market.EarningsSurprise, error) {
@@ -303,7 +332,9 @@ func (c *Client) Recommendations(ctx context.Context, sym market.Symbol) ([]mark
 	return rows, nil
 }
 
-func (c *Client) quote(ctx context.Context, sym market.Symbol) (market.Quote, error) {
+// rawQuote is one /quote call: the price and the day's change, without the
+// profile lookup for the name.
+func (c *Client) rawQuote(ctx context.Context, sym market.Symbol) (market.Quote, error) {
 	var d struct {
 		Current       float64  `json:"c"`
 		Change        *float64 `json:"d"`
@@ -335,7 +366,14 @@ func (c *Client) quote(ctx context.Context, sym market.Symbol) (market.Quote, er
 		t := time.Unix(d.Time, 0).UTC()
 		q.AsOf = &t
 	}
+	return q, nil
+}
 
+func (c *Client) quote(ctx context.Context, sym market.Symbol) (market.Quote, error) {
+	q, err := c.rawQuote(ctx, sym)
+	if err != nil {
+		return market.Quote{}, err
+	}
 	// Names and ranges are extras: a quote is still useful without them, and a
 	// later refresh fills them in once there is room in the budget.
 	if info, err := c.instrument(ctx, sym); err == nil {
@@ -353,6 +391,18 @@ func (c *Client) quote(ctx context.Context, sym market.Symbol) (market.Quote, er
 // because of the rate limit or an outage are reported through the returned
 // error alongside the partial result.
 func (c *Client) Quotes(ctx context.Context, symbols []market.Symbol) (map[market.Symbol]market.Quote, error) {
+	return c.quoteBatch(ctx, symbols, c.quote)
+}
+
+// DayChanges implements market.PerformanceProvider: quotes without names,
+// exchanges or logos, one /quote call each.
+func (c *Client) DayChanges(ctx context.Context, symbols []market.Symbol) (map[market.Symbol]market.Quote, error) {
+	return c.quoteBatch(ctx, symbols, c.rawQuote)
+}
+
+// quoteBatch runs fetch for each symbol, a few at a time.
+func (c *Client) quoteBatch(ctx context.Context, symbols []market.Symbol,
+	fetch func(context.Context, market.Symbol) (market.Quote, error)) (map[market.Symbol]market.Quote, error) {
 	var (
 		mu       sync.Mutex
 		out      = make(map[market.Symbol]market.Quote, len(symbols))
@@ -362,7 +412,7 @@ func (c *Client) Quotes(ctx context.Context, symbols []market.Symbol) (map[marke
 	g.SetLimit(parallelCalls)
 	for _, sym := range symbols {
 		g.Go(func() error {
-			q, err := c.quote(ctx, sym)
+			q, err := fetch(ctx, sym)
 			mu.Lock()
 			defer mu.Unlock()
 			switch {
@@ -390,6 +440,12 @@ func (c *Client) search(ctx context.Context, query string) ([]market.Instrument,
 			Symbol      string `json:"symbol"`
 			Type        string `json:"type"`
 		} `json:"result"`
+	}
+	select {
+	case c.searchSlot <- struct{}{}:
+		defer func() { <-c.searchSlot }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 	if err := c.get(ctx, "/search", url.Values{"q": {query}, "exchange": {"US"}}, &resp); err != nil {
 		return nil, err

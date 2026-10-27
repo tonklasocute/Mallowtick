@@ -72,6 +72,9 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
 - Tested with real keys on 2026-10-26. Finnhub's free plan has **no candles** (403) and
   **no past earnings dates** (empty list), and its quotes have no volume, name or market
   state. Don't plan features on those.
+- Finnhub `/search` answers 429 to a burst of calls (6 at once) well inside 60/min, and a 429
+  marks the whole budget spent for a minute. Keep searches one at a time (`searchSlot` in
+  `finnhub/client.go`).
 - Company fundamentals: Stock Detail shows the Finnhub profile, key ratios and returns vs
   the S&P 500 (`/fundamentals`), EPS against estimates (`/earnings/history`) and analyst
   ratings (`/recommendations`), in `features/stock-detail/`. News and SEC statements were
@@ -145,6 +148,20 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   2026-10-27). The favicon and app icons in `public/icons` still show the old mascot.
 - The design's bell button and "ดูทั้งหมด" link are omitted: there are no notifications or
   full popular list yet.
+- "กลุ่มอุตสาหกรรมเทียบตลาด" (`sector-rotation.tsx`, `/market/sectors`) ranks the 11 S&P 500
+  sectors by their SPDR ETFs' returns against SPY. It follows the canvas's Home card: a dark
+  "กลุ่มที่นำตลาด" card, then a 4-column mosaic heatmap coloured by the gap to SPY (`heat-0…5`
+  tokens). The canvas lays out 10 sectors (2×2, 2 wide, six 1×1, two 2 wide); `tileSizes`
+  widens as many of the last tiles as it takes to fill the bottom row, so the API's 11 leave
+  no hole. 1×1 tiles use short names (`SHORT_NAMES`, measured in Mitr) and 8px sides instead
+  of 10px. It shows price returns, never "fund flows": no free source
+  has those. Periods are 1D/1W/3M/YTD/1Y because Finnhub has no one-month return. Finnhub only
+  (`provider_not_configured` otherwise), since on Twelve Data it would cost 12 credits a poll.
+  It fetches quotes and returns without names (`market.PerformanceProvider`), in caches of
+  its own: with the ETF name lookups the first load after an API restart needed ~62 Finnhub
+  calls and went over 60/min; without them it is ~40. If the limit still leaves a sector out,
+  it shows "รอโควตา กำลังโหลดใหม่" while `useSectors` retries every 15 s. Don't raise
+  `FINNHUB_MAX_WAIT` to hide it (a 60 s wait would hold requests open).
 
 ## Local development
 

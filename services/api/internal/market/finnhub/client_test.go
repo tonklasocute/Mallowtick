@@ -164,6 +164,78 @@ func TestFundamentalsMapProfileAndMetrics(t *testing.T) {
 	}
 }
 
+func TestPerformanceSkipsProfiles(t *testing.T) {
+	// No /stock/profile2 or /search route: newTestClient fails the test if they are called.
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/quote": respond(aaplQuote),
+		"/stock/metric": respond(`{"metric":{"5DayPriceReturnDaily":-1.4681,"13WeekPriceReturnDaily":4.179,` +
+			`"monthToDatePriceReturnDaily":-6.3959,"yearToDatePriceReturnDaily":27.2696,"52WeekPriceReturnDaily":26.7677}}`),
+	}, 60)
+	ctx := context.Background()
+	q, err := c.DayChanges(ctx, []market.Symbol{"XLK", "XLF"})
+	if err != nil || len(q) != 2 || *q["XLK"].ChangePercent != -0.8498 || q["XLK"].Name != "" {
+		t.Fatalf("unexpected day changes: %+v %v", q, err)
+	}
+	r, err := c.PriceReturns(ctx, "XLK")
+	if err != nil || r.Day != nil || *r.Week != -1.4681 || *r.Quarter != 4.179 || *r.YTD != 27.2696 || *r.Year != 26.7677 {
+		t.Fatalf("unexpected returns: %+v %v", r, err)
+	}
+}
+
+func TestSearchesRunOneAtATime(t *testing.T) {
+	var inFlight, most atomic.Int32
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/stock/profile2": respond(`{}`),
+		"/search": func(w http.ResponseWriter, _ *http.Request) {
+			n := inFlight.Add(1)
+			defer inFlight.Add(-1)
+			for m := most.Load(); n > m && !most.CompareAndSwap(m, n); m = most.Load() {
+			}
+			time.Sleep(10 * time.Millisecond)
+			_, _ = w.Write([]byte(`{"result":[]}`))
+		},
+		"/quote": respond(aaplQuote),
+	}, 60)
+	// Four ETF quotes in parallel each look their name up through /search.
+	if _, err := c.Quotes(context.Background(), []market.Symbol{"XLK", "XLF", "XLE", "XLV"}); err != nil {
+		t.Fatal(err)
+	}
+	if most.Load() != 1 {
+		t.Fatalf("searches overlapped: %d at once", most.Load())
+	}
+}
+
+func TestFailedETFNameDoesNotFailFundamentals(t *testing.T) {
+	var profiles, searches atomic.Int32
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/stock/profile2": func(w http.ResponseWriter, _ *http.Request) {
+			profiles.Add(1)
+			_, _ = w.Write([]byte(`{}`)) // ETFs have no profile
+		},
+		"/search": func(w http.ResponseWriter, r *http.Request) {
+			searches.Add(1)
+			status(http.StatusBadGateway, `{"error":"upstream"}`)(w, r)
+		},
+		"/stock/metric": respond(`{"metric":{"5DayPriceReturnDaily":-1.4681,"yearToDatePriceReturnDaily":27.2696}}`),
+		"/quote":        respond(aaplQuote),
+	}, 60)
+	ctx := context.Background()
+	f, err := c.Fundamentals(ctx, "XLK")
+	if err != nil || f.Metrics.PriceReturnYTD == nil || *f.Metrics.PriceReturnYTD != 27.2696 {
+		t.Fatalf("the returns should not depend on the ETF's name: %+v %v", f, err)
+	}
+	// The name-less profile is kept for a while, so neither a quote nor another
+	// lookup spends the profile and search calls again.
+	q, err := c.Quotes(ctx, []market.Symbol{"XLK"})
+	if err != nil || q["XLK"].Name != "" || q["XLK"].Currency != "USD" {
+		t.Fatalf("unexpected quote: %+v %v", q, err)
+	}
+	if _, err := c.Fundamentals(ctx, "XLK"); err != nil || profiles.Load() != 1 || searches.Load() != 1 {
+		t.Fatalf("profile and name should be looked up once: profiles = %d, searches = %d, err = %v",
+			profiles.Load(), searches.Load(), err)
+	}
+}
+
 func TestEarningsHistoryAndRecommendationsAreNewestFirst(t *testing.T) {
 	c := newTestClient(t, map[string]http.HandlerFunc{
 		"/stock/earnings": respond(`[` +

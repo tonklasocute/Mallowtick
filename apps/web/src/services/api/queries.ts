@@ -13,6 +13,7 @@ export const queryKeys = {
   health: ["health"] as const,
   marketStatus: ["market-status"] as const,
   overview: ["overview"] as const,
+  sectors: ["sectors"] as const,
   search: (q: string) => ["search", q.toLowerCase()] as const,
   quote: (symbol: string) => ["quote", symbol] as const,
   quotes: (symbols: string[]) => ["quotes", ...symbols] as const,
@@ -76,6 +77,27 @@ export function useMarketOverview() {
       return ov;
     },
     refetchInterval: QUOTE_REFRESH_MS,
+  });
+}
+
+/** How soon to ask again for sectors the rate limit left out. */
+const SECTORS_QUOTA_RETRY_MS = 15_000;
+
+/**
+ * Sector returns against the S&P 500. The day's change refreshes with quotes; the
+ * server caches the longer returns for 6h. Pass `enabled` once the section is on screen.
+ * While the rate limit left sectors out it asks again sooner; the server fetches only
+ * what is missing, and refuses locally (no provider call) until there is room.
+ */
+export function useSectors(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.sectors,
+    queryFn: ({ signal }) => endpoints.sectors(signal),
+    enabled,
+    refetchInterval: (query) =>
+      query.state.data?.unavailable.some((u) => u.reason === "rate_limited")
+        ? SECTORS_QUOTA_RETRY_MS
+        : QUOTE_REFRESH_MS,
   });
 }
 
