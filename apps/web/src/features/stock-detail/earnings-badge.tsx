@@ -2,7 +2,6 @@
 
 import { CalendarDays } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { MARKET_TIMEZONE } from "@/lib/config";
 import { vendorLabel } from "@/lib/providers";
 import { useEarnings } from "@/services/api/queries";
@@ -39,10 +38,13 @@ export function EarningsBadge({ symbol, now = new Date() }: { symbol: string; no
   if (!next || next.date < marketToday(now)) return null;
   const hour = HOURS[next.hour];
   return (
-    <Badge tone="sky" title={`ปฏิทินประกาศงบจาก ${vendorLabel(data.freshness.provider)}`}>
-      <CalendarDays aria-hidden className="size-3.5" />
+    <span
+      title={`ปฏิทินประกาศงบจาก ${vendorLabel(data.freshness.provider)}`}
+      className="inline-flex items-center gap-1.5 rounded-full bg-lavender px-[11px] py-[5px] text-[11.5px] whitespace-nowrap text-lavender-ink"
+    >
+      <CalendarDays aria-hidden className="size-[13px]" strokeWidth={2.2} />
       ประกาศงบ {formatEarningsDate(next.date)}
       {hour && ` · ${hour}`}
-    </Badge>
+    </span>
   );
 }

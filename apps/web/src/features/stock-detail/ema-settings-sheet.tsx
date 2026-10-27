@@ -11,10 +11,10 @@ import { DEFAULT_CHART_PREFS, isValidPeriod, type EmaLineSetting } from "./chart
 
 /** One colour per EMA slot; names are design tokens in globals.css. */
 export const EMA_COLOR_TOKENS = [
-  { name: "ema-1", fallback: "#f5a524" },
-  { name: "ema-2", fallback: "#4aa8ea" },
-  { name: "ema-3", fallback: "#a07ce6" },
-  { name: "ema-4", fallback: "#ec5f9a" },
+  { name: "ema-1", fallback: "#f2a31f" },
+  { name: "ema-2", fallback: "#3fa7e8" },
+  { name: "ema-3", fallback: "#9b7bf0" },
+  { name: "ema-4", fallback: "#ec6fae" },
 ] as const;
 
 interface Draft {

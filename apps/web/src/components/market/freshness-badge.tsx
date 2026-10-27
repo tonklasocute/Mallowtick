@@ -21,9 +21,9 @@ const DOT: Record<FreshnessKind, string> = {
   live: "bg-up",
   delayed: "bg-sky",
   eod: "bg-sky",
-  closed: "bg-slate",
+  closed: "bg-faint",
   stale: "bg-down",
-  unknown: "bg-slate",
+  unknown: "bg-faint",
 };
 
 interface FreshnessProps {
@@ -74,5 +74,24 @@ export function FreshnessInline(props: FreshnessProps & { className?: string }) 
       <span className="sr-only">{info.detail}</span>
       <span aria-hidden>{info.kind === "stale" ? `${info.label} · ${info.time}` : info.time}</span>
     </span>
+  );
+}
+
+const CHIP =
+  "inline-flex items-center gap-1.5 rounded-full bg-cream-deep px-[11px] py-[5px] text-[11.5px] whitespace-nowrap text-slate";
+
+/** Stock Detail's meta chips: the state with its dot, then the time it is based on. */
+export function FreshnessChips(props: FreshnessProps) {
+  const info = useFreshness(props);
+  const prefix = `${info.label} · `;
+  const rest = info.detail.startsWith(prefix) ? info.detail.slice(prefix.length) : info.detail;
+  return (
+    <>
+      <span className={CHIP}>
+        <span aria-hidden className={cn("size-[7px] rounded-full", DOT[info.kind])} />
+        {info.label}
+      </span>
+      <span className={CHIP}>{rest}</span>
+    </>
   );
 }

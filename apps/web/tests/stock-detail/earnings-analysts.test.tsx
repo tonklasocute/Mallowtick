@@ -66,11 +66,18 @@ describe("EarningsHistory", () => {
     });
     renderWithProviders(<EarningsHistory symbol="RKLB" />);
 
-    expect(await screen.findByText(/ดีกว่าที่นักวิเคราะห์คาด 3 จาก 4 ไตรมาส/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        (_, el) => el?.tagName === "P" && el.textContent === "EPS ดีกว่าคาด 3 จาก 4 ไตรมาส",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "EPS จริงเทียบกับคาดการณ์ 4 ไตรมาสล่าสุด" }),
+    ).toBeInTheDocument();
     const latest = screen.getByText("Q2 2026").closest("tr")!;
     expect(latest).toHaveTextContent("สิ้นสุด มิ.ย. 2026");
     // The estimate keeps its decimals, so the miss is visible next to the actual.
-    expect(latest).toHaveTextContent("-0.08-0.0765-4.58%");
+    expect(latest).toHaveTextContent("-0.08คาด -0.0765▼ -4.58%");
     expect(screen.getByText("-4.58%")).toHaveClass("text-down");
     expect(screen.getByText("+14.11%")).toHaveClass("text-up");
     // A 0.42-cent beat (+4.46%) still counts and is green.
@@ -108,7 +115,8 @@ describe("AnalystRatings", () => {
     });
     renderWithProviders(<AnalystRatings symbol="RKLB" />);
 
-    expect(await screen.findByText(/นักวิเคราะห์ 28 ราย · 82% ให้ซื้อ/)).toBeInTheDocument();
+    expect(await screen.findByText("82%")).toBeInTheDocument();
+    expect(screen.getByText("จากนักวิเคราะห์ 28 ราย")).toBeInTheDocument();
     expect(screen.getByText("ข้อมูล ต.ค. 2026")).toBeInTheDocument();
     expect(
       screen.getByRole("img", {

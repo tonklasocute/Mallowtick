@@ -89,16 +89,21 @@ describe("CompanyFundamentals", () => {
     expect(screen.getByText("P/E").nextSibling).toHaveTextContent("ขาดทุน");
     expect(screen.getByText("รายได้ เทียบปีก่อน").nextSibling).toHaveTextContent("+52.53%");
     expect(screen.getByText("รายได้ เทียบปีก่อน").nextSibling).toHaveClass("text-up");
-    // text-ink would override the custom colour classes, so it must not be applied too.
-    expect(screen.getByText("อัตรากำไรสุทธิ").nextSibling).toHaveClass("text-down");
-    expect(screen.getByText("อัตรากำไรสุทธิ").nextSibling).not.toHaveClass("text-ink");
-    // Returns carry the S&P 500's beside them; the 52-week high carries its date.
-    const year = screen.getByText("1 ปี").nextSibling;
-    expect(year).toHaveTextContent("-17.26%S&P 500 +13.13%");
-    expect(year).toHaveClass("text-down");
-    expect(screen.getByText("สูงสุด 52 สัปดาห์").nextSibling).toHaveTextContent(
-      "151.0027 พ.ค. 2026",
+    // Margins are bars from the centre with the value beside them. text-ink would
+    // override the custom colour classes, so it must not be applied too.
+    expect(screen.getByText("อัตรากำไรสุทธิ").closest("li")).toHaveTextContent(
+      "อัตรากำไรสุทธิ-21.51%",
     );
+    expect(screen.getByText("-21.51%")).toHaveClass("text-down");
+    expect(screen.getByText("-21.51%")).not.toHaveClass("text-ink");
+    // Returns are compared with the S&P 500's; the 52-week high carries its date.
+    expect(screen.getByText("1 ปี").parentElement).toHaveTextContent(
+      "1 ปีRKLB-17.26%S&P 500+13.13%",
+    );
+    expect(screen.getByText("-17.26%")).toHaveClass("text-down");
+    const high = screen.getByText("สูงสุด 52 สัปดาห์").nextSibling;
+    expect(high).toHaveTextContent("151.00");
+    expect(high?.nextSibling).toHaveTextContent("27 พ.ค. 2026");
     // Metrics the vendor didn't report are left out rather than shown as "—".
     expect(screen.queryByText("ตั้งแต่ต้นปี")).not.toBeInTheDocument();
     expect(screen.queryByText("อัตราปันผล")).not.toBeInTheDocument();

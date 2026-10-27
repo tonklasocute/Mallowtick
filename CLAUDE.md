@@ -15,7 +15,11 @@ Do not rely on the notes below alone; the image is the source of truth.
 Quick notes from the reference (verify against the image):
 
 - Palette: Mint `#A7E3C2`, Sky `#BFE8FF`, Cream `#FFF9F0`, Soft Blue `#E6F4FF`,
-  Gray `#6B7280`, Accent `#FFB6C1`
+  Gray `#6B7280`, Accent `#FFB6C1`. The colour tokens in `globals.css` now follow the
+  `.app` tokens of the Claude design canvas instead (page `#FFF7EC`, ink `#1D3B32`, up
+  `#25A874`, down `#EE6A86`, …), asked for on Stock Detail on 2026-10-27 and applied app-wide
+  because every canvas artboard shares them. `up`/`down` are the darker text colours;
+  `up-fill`/`down-fill` are for bars and dots.
 - Mascot: a cream marshmallow with a sprout on top; logo wordmark "Mallowtick" with an up-trend arrow on the "k"
 - Screens (V1): Discover (search, S&P 500 / Nasdaq / Dow cards, popular stocks),
   Stock Detail (price header, Overview/Chart/News/Financials tabs, candlestick chart with
@@ -100,6 +104,19 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
 - Colour tokens read only by the canvas or inline styles go in the `@theme static` block of
   `globals.css`. Tailwind v4 drops theme variables that no utility class uses, so they
   would silently fall back otherwise.
+
+## Stock Detail screen
+
+- Follows the "RKLB 1–3" artboards of the Claude design canvas (one page in three
+  screens): 26px cards (`rounded-panel`) with pastel icon tiles, soft tiles for numbers,
+  level boxes with a five-step strength meter, range bars for the day and 52 weeks,
+  returns and margins as bars from a centre line, an EPS dot chart and a stacked analyst
+  bar. Shared pieces are in `features/stock-detail/detail-ui.tsx`. Every number comes
+  from the API; the canvas values are examples.
+- The canvas stops at profitability in "ตัวเลขสำคัญ"; financial health and dividends use
+  the same tiles. Its "฿" glyph for "มูลค่าบริษัท" is "$" here, since prices are in USD.
+- The header repeats the price ("RKLB $53.82") once the price line scrolls under it.
+- The chart toggles wrap onto a second row on phones (the canvas CSS wraps them too).
 
 ## Discover screen
 

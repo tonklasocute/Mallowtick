@@ -5,8 +5,6 @@ import { useMemo, useRef, useState, type ReactNode } from "react";
 
 import { CandlestickChart, token, type ChartLine } from "@/components/charts/candlestick-chart";
 import { ApiErrorState } from "@/components/market/api-error-state";
-import { PriceChange } from "@/components/market/price-change";
-import { Card } from "@/components/ui/card";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StateMessage } from "@/components/ui/state-message";
@@ -18,6 +16,7 @@ import type { useCandles } from "@/services/api/queries";
 import { CHART_RANGES, type CandleSeries, type ChartRange } from "@/types/api";
 
 import { useChartPrefs } from "./chart-prefs";
+import { DeltaPill, DetailCard, Tile, TileGrid } from "./detail-ui";
 import { EMA_COLOR_TOKENS, EmaSettingsSheet } from "./ema-settings-sheet";
 
 export const RANGE_LABELS: Record<ChartRange, string> = {
@@ -93,15 +92,6 @@ function ohlcFor(data: CandleSeries): Ohlc | null {
   };
 }
 
-function StatChip({ label, value }: { label: string; value: number }) {
-  return (
-    <span className="inline-flex items-baseline gap-1.5 rounded-[14px] bg-cream-deep/70 px-3 py-1.5 text-[13px]">
-      <span className="text-slate-strong">{label}</span>
-      <span className="tabular font-display font-extrabold text-ink">{formatNumber(value)}</span>
-    </span>
-  );
-}
-
 function ToggleChip({
   label,
   checked,
@@ -118,23 +108,23 @@ function ToggleChip({
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={cn(
-        "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[13px] font-medium transition",
+        "inline-flex h-9 shrink-0 items-center gap-[7px] rounded-full border-[1.5px] pr-3 pl-2.5 text-xs transition",
         checked
-          ? "border-transparent bg-cream-deep/70 text-ink"
-          : "border-dashed border-slate/40 text-slate-strong hover:text-ink",
+          ? "border-transparent bg-cream-deep text-ink"
+          : "border-dashed border-line text-slate hover:text-ink",
       )}
     >
       <span
         aria-hidden
         className={cn(
-          "relative h-3.5 w-6 shrink-0 rounded-full transition-colors",
-          checked ? "bg-mint-deep" : "bg-slate/25",
+          "relative h-3.5 w-[22px] shrink-0 rounded-full transition-colors",
+          checked ? "bg-up-fill" : "bg-line",
         )}
       >
         <span
           className={cn(
-            "absolute top-0.5 size-2.5 rounded-full bg-surface shadow-soft transition-[left]",
-            checked ? "left-3" : "left-0.5",
+            "absolute top-0.5 size-2.5 rounded-full bg-surface transition-[left]",
+            checked ? "left-2.5" : "left-0.5",
           )}
         />
       </span>
@@ -145,11 +135,11 @@ function ToggleChip({
 
 function LevelLegend() {
   return (
-    <span className="inline-flex items-center gap-3" aria-hidden>
-      <span className="inline-flex items-center gap-1">
+    <span className="inline-flex items-center gap-3.5" aria-hidden>
+      <span className="inline-flex items-center gap-1.5">
         <span className="w-4 border-t-2 border-dashed border-resistance" /> แนวต้าน
       </span>
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center gap-1.5">
         <span className="w-4 border-t-2 border-dashed border-support" /> แนวรับ
       </span>
     </span>
@@ -222,7 +212,7 @@ export function ChartPanel({ range, onRangeChange, candles, levels }: ChartPanel
 
   const last = data?.candles.at(-1);
   return (
-    <Card className="space-y-3 px-3 pb-3">
+    <DetailCard aria-label="กราฟราคา">
       <SegmentedControl
         label="ช่วงเวลาของกราฟ"
         options={options}
@@ -234,73 +224,76 @@ export function ChartPanel({ range, onRangeChange, candles, levels }: ChartPanel
       />
 
       {ohlc && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <StatChip label="เปิด" value={ohlc.open} />
-          <StatChip label="สูง" value={ohlc.high} />
-          <StatChip label="ต่ำ" value={ohlc.low} />
-          <StatChip label="ปิด" value={ohlc.close} />
-          <PriceChange
-            change={ohlc.close - ohlc.base}
-            changePercent={ohlc.base ? ((ohlc.close - ohlc.base) / ohlc.base) * 100 : null}
-            variant="pill"
-            className="ml-auto px-2.5 py-1.5 text-[13px]"
-          />
-        </div>
+        <>
+          <TileGrid cols={4}>
+            <Tile size="sm" label="เปิด" value={formatNumber(ohlc.open)} />
+            <Tile size="sm" label="สูง" value={formatNumber(ohlc.high)} />
+            <Tile size="sm" label="ต่ำ" value={formatNumber(ohlc.low)} />
+            <Tile size="sm" label="ปิด" value={formatNumber(ohlc.close)} />
+          </TileGrid>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11.5px] text-slate">เปลี่ยนแปลงในช่วง {RANGE_SPANS[range]}</span>
+            <DeltaPill
+              change={ohlc.close - ohlc.base}
+              changePercent={ohlc.base ? ((ohlc.close - ohlc.base) / ohlc.base) * 100 : null}
+            />
+          </div>
+        </>
       )}
 
-      {/* One row like the reference; scrolls sideways on very narrow phones. */}
-      <div className="flex gap-1 overflow-x-auto [scrollbar-width:none]">
-        <ToggleChip
-          label="EMA"
-          checked={prefs.showEma}
-          onChange={(v) => setPrefs({ ...prefs, showEma: v })}
-        />
-        <ToggleChip
-          label="แนวรับ-แนวต้าน"
-          checked={prefs.showLevels}
-          onChange={(v) => setPrefs({ ...prefs, showLevels: v })}
-        />
-        <ToggleChip
-          label="วอลุ่ม"
-          checked={prefs.showVolume}
-          onChange={(v) => setPrefs({ ...prefs, showVolume: v })}
-        />
+      <div className="flex items-start justify-between gap-2">
+        {/* Wraps like the canvas when the chips don't fit beside the gear (most phones). */}
+        <div className="flex min-w-0 flex-wrap gap-1.5">
+          <ToggleChip
+            label="EMA"
+            checked={prefs.showEma}
+            onChange={(v) => setPrefs({ ...prefs, showEma: v })}
+          />
+          <ToggleChip
+            label="แนวรับ-แนวต้าน"
+            checked={prefs.showLevels}
+            onChange={(v) => setPrefs({ ...prefs, showLevels: v })}
+          />
+          <ToggleChip
+            label="วอลุ่ม"
+            checked={prefs.showVolume}
+            onChange={(v) => setPrefs({ ...prefs, showVolume: v })}
+          />
+        </div>
+        <button
+          ref={gearRef}
+          type="button"
+          aria-label="ตั้งค่าเส้น EMA"
+          title="ตั้งค่าเส้น EMA"
+          onClick={() => setSettingsOpen(true)}
+          className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-ink transition hover:bg-cream-deep"
+        >
+          <SlidersHorizontal aria-hidden className="size-[18px]" />
+        </button>
       </div>
 
       {prefs.showEma && (
-        <div className="flex items-center gap-2">
-          <ul className="flex min-w-0 flex-1 flex-wrap gap-x-3 gap-y-1 px-1 text-xs">
-            {emaLines.map((l) => {
-              const v = l.values[legendIndex];
-              return (
-                <li key={l.slot} className="inline-flex items-center gap-1.5">
-                  <span
-                    aria-hidden
-                    className="h-[3px] w-3.5 rounded-full"
-                    style={{ backgroundColor: `var(--color-${EMA_COLOR_TOKENS[l.slot]!.name})` }}
-                  />
-                  <span className="font-semibold text-slate-strong">EMA{l.period}</span>
-                  <span className="tabular font-semibold text-ink">
-                    {v === null || v === undefined ? "—" : formatNumber(v)}
-                  </span>
-                </li>
-              );
-            })}
-            {prefs.ema.every((s) => !s.enabled) && (
-              <li className="text-slate">ปิดเส้น EMA ไว้ทั้งหมด</li>
-            )}
-          </ul>
-          <button
-            ref={gearRef}
-            type="button"
-            aria-label="ตั้งค่าเส้น EMA"
-            title="ตั้งค่าเส้น EMA"
-            onClick={() => setSettingsOpen(true)}
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-slate-strong transition hover:bg-cream-deep hover:text-ink"
-          >
-            <SlidersHorizontal aria-hidden className="size-4" />
-          </button>
-        </div>
+        <ul className="grid grid-cols-2 gap-x-3 gap-y-1.5 font-display text-[11.5px] font-extrabold">
+          {emaLines.map((l) => {
+            const v = l.values[legendIndex];
+            return (
+              <li key={l.slot} className="inline-flex items-center gap-1.5">
+                <span
+                  aria-hidden
+                  className="h-1 w-3.5 rounded-full"
+                  style={{ backgroundColor: `var(--color-${EMA_COLOR_TOKENS[l.slot]!.name})` }}
+                />
+                <span className="text-slate">EMA{l.period}</span>
+                <span className="tabular text-ink">
+                  {v === null || v === undefined ? "—" : formatNumber(v)}
+                </span>
+              </li>
+            );
+          })}
+          {prefs.ema.every((s) => !s.enabled) && (
+            <li className="col-span-2 font-sans font-normal text-slate">ปิดเส้น EMA ไว้ทั้งหมด</li>
+          )}
+        </ul>
       )}
 
       <div className="relative" style={{ height: CHART_HEIGHT }}>
@@ -317,13 +310,13 @@ export function ChartPanel({ range, onRangeChange, candles, levels }: ChartPanel
       </div>
 
       {data && last && (
-        <div className="space-y-1 px-1 text-[11px] text-slate">
+        <div className="flex flex-col gap-1.5 text-[11.5px] font-light text-slate">
           {prefs.showEma && short.length > 0 && (
             <p>
               ข้อมูลย้อนหลังไม่พอคำนวณ {short.map((l) => `EMA${l.period}`).join(", ")} ในช่วงนี้
             </p>
           )}
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+          <div className="flex flex-col gap-1.5">
             <span>
               {kind === "line" ? lineLabel(data.interval) : candleLabel(data.interval)} ·{" "}
               {RANGE_SPANS[range]} · แท่งล่าสุด {formatBarTime(last.time, data.interval)}
@@ -348,6 +341,6 @@ export function ChartPanel({ range, onRangeChange, candles, levels }: ChartPanel
           }}
         />
       )}
-    </Card>
+    </DetailCard>
   );
 }

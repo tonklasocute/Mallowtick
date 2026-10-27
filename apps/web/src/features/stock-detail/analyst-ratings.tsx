@@ -1,15 +1,16 @@
 "use client";
 
+import { UsersRound } from "lucide-react";
+
 import { ApiErrorState } from "@/components/market/api-error-state";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/cn";
 import { formatCalendarDate } from "@/lib/format";
 import { isApiError } from "@/services/api/client";
 import { useRecommendations } from "@/services/api/queries";
 import type { RecommendationTrend } from "@/types/api";
 
-import { SourceNote } from "./company-fundamentals";
+import { CardBadge, CardHeading, DetailCard, SourceNote } from "./detail-ui";
 
 /** Ratings from most bullish to most bearish, with their colour on the diverging scale. */
 const RATINGS: { key: keyof Omit<RecommendationTrend, "period">; label: string; bg: string }[] = [
@@ -29,21 +30,21 @@ export function AnalystRatings({ symbol }: { symbol: string }) {
 
   if (isPending) {
     return (
-      <Card>
-        <CardTitle className="mb-2">มุมมองนักวิเคราะห์</CardTitle>
+      <DetailCard aria-label="มุมมองนักวิเคราะห์">
+        <CardHeading icon={UsersRound} tone="lavender" title="มุมมองนักวิเคราะห์" />
         <div aria-busy="true" aria-label="กำลังโหลดมุมมองนักวิเคราะห์">
-          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-24 w-full" />
         </div>
-      </Card>
+      </DetailCard>
     );
   }
   if (!data) {
     if (isApiError(error) && error.code === "provider_not_configured") return null;
     return (
-      <Card>
-        <CardTitle className="mb-2">มุมมองนักวิเคราะห์</CardTitle>
+      <DetailCard aria-label="มุมมองนักวิเคราะห์">
+        <CardHeading icon={UsersRound} tone="lavender" title="มุมมองนักวิเคราะห์" />
         <ApiErrorState error={error} onRetry={() => void refetch()} compact />
-      </Card>
+      </DetailCard>
     );
   }
   const latest = data.trends[0];
@@ -54,38 +55,61 @@ export function AnalystRatings({ symbol }: { symbol: string }) {
   const summary = RATINGS.map((r) => `${r.label} ${latest[r.key]}`).join(", ");
 
   return (
-    <Card>
-      <div className="flex items-center justify-between gap-2">
-        <CardTitle>มุมมองนักวิเคราะห์</CardTitle>
-        <Badge tone="sky">ข้อมูล {formatCalendarDate(latest.period, "month")}</Badge>
-      </div>
-      <p className="mt-0.5 mb-3 text-sm font-light text-slate-strong">
-        นักวิเคราะห์ {total} ราย · {buyShare}% ให้ซื้อ
+    <DetailCard aria-label="มุมมองนักวิเคราะห์">
+      <CardHeading
+        icon={UsersRound}
+        tone="lavender"
+        title="มุมมองนักวิเคราะห์"
+        badge={<CardBadge>ข้อมูล {formatCalendarDate(latest.period, "month")}</CardBadge>}
+      />
+      <p className="flex items-end gap-3">
+        <span
+          className={cn(
+            "tabular font-display text-[44px] leading-none font-black tracking-[-1px]",
+            buyShare >= 50 ? "text-up" : "text-ink",
+          )}
+        >
+          {buyShare}%
+        </span>
+        <span className="flex flex-col gap-0.5 pb-1">
+          <b className="text-[15px] font-medium text-ink">ให้ซื้อ</b>
+          <span className="text-xs text-slate">จากนักวิเคราะห์ {total} ราย</span>
+        </span>
       </p>
-      <div role="img" aria-label={`จำนวนนักวิเคราะห์: ${summary}`} className="flex h-3 gap-0.5">
+      <div role="img" aria-label={`จำนวนนักวิเคราะห์: ${summary}`} className="flex h-4 gap-1">
         {RATINGS.filter((r) => latest[r.key] > 0).map((r) => (
           <span
             key={r.key}
             title={`${r.label} ${latest[r.key]} ราย`}
-            className={`${r.bg} rounded-full`}
+            className={cn(r.bg, "rounded-full")}
             style={{ flexGrow: latest[r.key], flexBasis: 0 }}
           />
         ))}
       </div>
-      <ul className="mt-3 grid grid-cols-5 gap-1 text-center">
+      <ul className="grid grid-cols-5 gap-1">
         {RATINGS.map((r) => (
-          <li key={r.key} className="flex flex-col items-center gap-0.5">
-            <span className="flex items-center gap-1 text-[11px] font-light text-slate">
-              <span aria-hidden className={`${r.bg} size-2 rounded-full`} />
+          <li
+            key={r.key}
+            className="flex flex-col items-center gap-1 rounded-[14px] bg-cream-deep px-0.5 py-2"
+          >
+            <span className="inline-flex items-center gap-1 text-[11px] whitespace-nowrap text-slate">
+              <span aria-hidden className={cn(r.bg, "size-2 rounded-full")} />
               {r.label}
             </span>
-            <span className="tabular text-sm font-semibold text-ink">{latest[r.key]}</span>
+            <b
+              className={cn(
+                "tabular font-display text-[17px] font-black",
+                latest[r.key] === 0 ? "text-faint" : "text-ink",
+              )}
+            >
+              {latest[r.key]}
+            </b>
           </li>
         ))}
       </ul>
       <SourceNote freshness={data.freshness}>
         ความเห็นของนักวิเคราะห์ภายนอก ไม่ใช่คำแนะนำของ Mallowtick
       </SourceNote>
-    </Card>
+    </DetailCard>
   );
 }
