@@ -94,6 +94,9 @@ func (s *stubService) MarketStatus(context.Context) (market.StatusResult, error)
 func (s *stubService) Overview(context.Context) (market.Overview, error) {
 	return market.Overview{}, s.err
 }
+func (s *stubService) ExchangeRate(context.Context) (market.ExchangeRateResult, error) {
+	return market.ExchangeRateResult{ExchangeRate: market.ExchangeRate{Pair: "USD/THB", Rate: 33.78}}, s.err
+}
 func (s *stubService) Sectors(context.Context) (market.SectorsResult, error) {
 	return market.SectorsResult{Sectors: []market.SectorPerformance{{Sector: "technology", Symbol: "XLK"}}}, s.err
 }
@@ -134,6 +137,7 @@ func TestSuccessfulRequests(t *testing.T) {
 		{"/api/v1/market/status", `"isOpen":true`},
 		{"/api/v1/market/overview", `"benchmarks"`},
 		{"/api/v1/market/sectors", `"sector":"technology"`},
+		{"/api/v1/fx/usd-thb", `"rate":33.78`},
 		{"/api/v1/stocks/search?q=apple", `"query":"apple"`},
 		{"/api/v1/stocks/quotes?symbols=aapl,msft", `"quotes":[]`},
 		{"/api/v1/stocks/aapl", `"symbol":"AAPL"`},

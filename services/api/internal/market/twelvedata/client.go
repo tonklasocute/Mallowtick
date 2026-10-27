@@ -51,7 +51,10 @@ type Client struct {
 	log     *slog.Logger
 }
 
-var _ market.Provider = (*Client)(nil)
+var (
+	_ market.Provider   = (*Client)(nil)
+	_ market.FXProvider = (*Client)(nil)
+)
 
 // New validates cfg and returns a client.
 func New(cfg Config) (*Client, error) {

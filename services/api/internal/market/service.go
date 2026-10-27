@@ -49,6 +49,9 @@ const (
 	fundamentalsTTL = 6 * time.Hour
 	// Analyst rating counts are published monthly.
 	ratingsTTL = 12 * time.Hour
+	// The portfolio values holdings in baht with this; an hour keeps it to about
+	// 24 Twelve Data credits a day.
+	fxTTL = time.Hour
 )
 
 // Service is the application layer between transports and a Provider.
@@ -70,6 +73,7 @@ type Service struct {
 	// dayChanges and returns hold the sectors' name-free quotes and returns.
 	dayChanges *cache.TTL[Quote]
 	returns    *cache.TTL[PriceReturns]
+	fx         *cache.TTL[ExchangeRate]
 }
 
 // NewService wires a provider with caches.
@@ -96,6 +100,7 @@ func NewService(p Provider, cfg ServiceConfig) *Service {
 		ratings:      cache.New[[]RecommendationTrend](ratingsTTL, retain, 1000, cfg.Now),
 		dayChanges:   cache.New[Quote](cfg.QuoteTTL, retain, 100, cfg.Now),
 		returns:      cache.New[PriceReturns](fundamentalsTTL, retain, 100, cfg.Now),
+		fx:           cache.New[ExchangeRate](fxTTL, retain, 10, cfg.Now),
 	}
 }
 
@@ -146,6 +151,9 @@ func serves(p Provider, kind DataKind) bool {
 		return ok
 	case KindFundamentals:
 		_, ok := p.(FundamentalsProvider)
+		return ok
+	case KindFX:
+		_, ok := p.(FXProvider)
 		return ok
 	}
 	return true
@@ -585,6 +593,27 @@ func nonNil[T any](v []T) []T {
 		return []T{}
 	}
 	return v
+}
+
+// ExchangeRateResult is an exchange rate with freshness metadata.
+type ExchangeRateResult struct {
+	ExchangeRate
+	Freshness Freshness `json:"freshness"`
+}
+
+// ExchangeRate returns how many baht one US dollar costs. It fails with
+// ErrNotConfigured when no configured vendor publishes exchange rates.
+func (s *Service) ExchangeRate(ctx context.Context) (ExchangeRateResult, error) {
+	fp, ok := s.source(KindFX).(FXProvider)
+	if !ok {
+		return ExchangeRateResult{}, ErrNotConfigured
+	}
+	e, stale, err := load(ctx, s, s.fx, "fx:USD/THB", fixedTTL[ExchangeRate](fxTTL),
+		func(fctx context.Context) (ExchangeRate, error) { return fp.ExchangeRate(fctx, "USD", "THB") })
+	if err != nil {
+		return ExchangeRateResult{}, err
+	}
+	return ExchangeRateResult{ExchangeRate: e.Value, Freshness: s.freshness(KindFX, e.Value.AsOf, e.StoredAt, stale)}, nil
 }
 
 // FundamentalsResult is a company profile and its key metrics.

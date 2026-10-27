@@ -15,6 +15,7 @@ describe.each([
     ["/", "สำรวจ"],
     ["/stocks/AAPL", "สำรวจ"],
     ["/watchlist", "หุ้นที่สนใจ"],
+    ["/portfolio", "พอร์ต"],
     ["/more", "เพิ่มเติม"],
   ])("marks %s as %s", (path, active) => {
     pathname.current = path;

@@ -1,4 +1,4 @@
-import { Compass, Settings2, Star, type LucideIcon } from "lucide-react";
+import { BriefcaseBusiness, Compass, Settings2, Star, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
   href: string;
@@ -23,6 +23,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     Icon: Star,
     fillWhenActive: true,
     match: (p) => p.startsWith("/watchlist"),
+  },
+  {
+    href: "/portfolio",
+    label: "พอร์ต",
+    Icon: BriefcaseBusiness,
+    match: (p) => p.startsWith("/portfolio"),
   },
   { href: "/more", label: "เพิ่มเติม", Icon: Settings2, match: (p) => p.startsWith("/more") },
 ];

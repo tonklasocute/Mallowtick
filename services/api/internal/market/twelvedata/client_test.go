@@ -312,3 +312,25 @@ func TestMarketStatus(t *testing.T) {
 		t.Fatalf("unexpected status %+v", st)
 	}
 }
+
+func TestExchangeRate(t *testing.T) {
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/exchange_rate": func(w http.ResponseWriter, r *http.Request) {
+			if got := r.URL.Query().Get("symbol"); got != "USD/THB" {
+				t.Errorf("symbol = %q", got)
+			}
+			_, _ = w.Write([]byte(`{"symbol":"USD/THB","rate":33.78368,"timestamp":1793090880}`))
+		},
+	}, 8)
+	r, err := c.ExchangeRate(context.Background(), "usd", "thb")
+	if err != nil || r.Pair != "USD/THB" || r.Rate != 33.78368 || r.AsOf == nil || r.AsOf.Unix() != 1793090880 {
+		t.Fatalf("unexpected rate: %+v %v", r, err)
+	}
+}
+
+func TestExchangeRateWithoutARateIsNotFound(t *testing.T) {
+	c := newTestClient(t, map[string]http.HandlerFunc{"/exchange_rate": respond(`{"symbol":"USD/XXX"}`)}, 8)
+	if _, err := c.ExchangeRate(context.Background(), "USD", "XXX"); !errors.Is(err, market.ErrNotFound) {
+		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+}

@@ -163,6 +163,25 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   it shows "รอโควตา กำลังโหลดใหม่" while `useSectors` retries every 15 s. Don't raise
   `FINNHUB_MAX_WAIT` to hide it (a 60 s wait would hold requests open).
 
+## Portfolio screen
+
+- `/portfolio` ("พอร์ต", the 4th tab) follows the "Mallowtick พอร์ตของฉัน" design canvas
+  (https://claude.ai/artifact/H5yaUmZuZ4y8X4a8wM5Xef): a dark summary card with the value
+  goal, a folded allocation donut, holdings with an "ติดลบ" filter, a holding sheet and a
+  goals sheet for the value goal. Code in `features/portfolio/`; the canvas values are examples.
+- Holdings are typed in by the user and stored on the device only
+  (`mallowtick.portfolio.v1`, same repository pattern as the watchlist). Up to 25, the batch
+  quote limit.
+- Baht values use `/fx/usd-thb` (Twelve Data, cached 1h). The cost uses the purchase rate
+  when given, so the gain splits into the share price's part and the baht's. Without a rate
+  the screen falls back to dollars and says so; it never assumes one.
+- The holding sheet asks only for shares and the average cost or the total cost in USD
+  (either one fills in the other; the user's decision, 2026-10-27). The model still has a
+  purchase baht rate, target price, stop loss and target weight: editing keeps saved values,
+  but no screen sets them. The goals sheet's target weights were removed too (user's
+  decision, 2026-10-27: not useful).
+- With four tabs the bottom nav stacks the icon over the label for the unselected ones.
+
 ## Local development
 
 The project is worked on from both a Windows PC and a Mac.
