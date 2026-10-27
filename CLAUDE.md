@@ -68,6 +68,12 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
 - Tested with real keys on 2026-10-26. Finnhub's free plan has **no candles** (403) and
   **no past earnings dates** (empty list), and its quotes have no volume, name or market
   state. Don't plan features on those.
+- Company fundamentals: Stock Detail shows the Finnhub profile and key ratios
+  (`/stocks/{symbol}/fundamentals`, `features/stock-detail/company-fundamentals.tsx`). EPS
+  surprises, news and statements were tested on 2026-10-27 but are not used yet. What each
+  free source gives, and what is 403, is in
+  [docs/market-data.md](docs/market-data.md#company-fundamentals). The industry name is the
+  vendor's English text; there is no Thai mapping yet.
 - Freshness and `/health` name the vendor per kind of data (`Service.source(kind)`). Keep
   that when adding a data kind; never label one vendor's data with another's name.
 - Never sum Twelve Data free-plan intraday volumes. They cover only part of the market

@@ -14,6 +14,7 @@ import { useCandles, useLevels, useQuote } from "@/services/api/queries";
 import type { ChartRange } from "@/types/api";
 
 import { ChartPanel } from "./chart-panel";
+import { CompanyFundamentals } from "./company-fundamentals";
 import { KeyLevels } from "./key-levels";
 import { PriceHeader } from "./price-header";
 import { QuoteStats } from "./quote-stats";
@@ -57,9 +58,11 @@ export function StockDetailScreen({ symbol }: { symbol: string }) {
         <ChartPanel range={range} onRangeChange={setRange} candles={candles} levels={levels} />
         <KeyLevels range={range} query={levelsQuery} levels={levels} />
         {quote.data && <QuoteStats quote={quote.data} />}
+        <CompanyFundamentals symbol={symbol} />
         <p className="px-1 text-[11px] leading-relaxed text-slate">
           ใช้เป็นข้อมูลประกอบเท่านั้น ไม่ใช่คำแนะนำการลงทุน
-          ราคามาจากผู้ให้บริการข้อมูลตลาดที่ตั้งค่าไว้ ส่วนแนวรับ-แนวต้านคำนวณโดย Mallowtick
+          ราคาและข้อมูลบริษัทมาจากผู้ให้บริการข้อมูลตลาดที่ตั้งค่าไว้ ส่วนแนวรับ-แนวต้านคำนวณโดย
+          Mallowtick
         </p>
       </main>
     </PageContainer>

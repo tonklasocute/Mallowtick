@@ -28,11 +28,25 @@ func (e *earningsFake) NextEarnings(context.Context, Symbol, time.Time) (*Earnin
 	return e.next, nil
 }
 
+// fundamentalsFake is a quote vendor that, like Finnhub, publishes an earnings
+// calendar and company fundamentals.
+type fundamentalsFake struct {
+	*earningsFake
+	calls atomic.Int32
+}
+
+func (f *fundamentalsFake) Fundamentals(_ context.Context, sym Symbol) (Fundamentals, error) {
+	f.calls.Add(1)
+	return Fundamentals{Symbol: string(sym), Industry: "Technology"}, nil
+}
+
 func int64p(n int64) *int64 { return &n }
 
 func TestCompositeNamesTheVendorBehindEachKind(t *testing.T) {
 	clk := &testClock{t: time.Unix(0, 0)}
-	quotes := &earningsFake{namedFake: namedFake{&fakeProvider{quotes: map[Symbol]Quote{"AAPL": quote("AAPL", 1, true)}}, "finnhub"}}
+	quotes := &fundamentalsFake{earningsFake: &earningsFake{
+		namedFake: namedFake{&fakeProvider{quotes: map[Symbol]Quote{"AAPL": quote("AAPL", 1, true)}}, "finnhub"},
+	}}
 	bars := namedFake{&fakeProvider{candles: CandleSeries{Symbol: "AAPL"}}, "twelvedata"}
 	s := newTestService(Composite{QuoteSource: quotes, BarSource: bars}, clk)
 	ctx := context.Background()
@@ -52,7 +66,7 @@ func TestCompositeNamesTheVendorBehindEachKind(t *testing.T) {
 	info := s.ProviderInfo()
 	if info.Name != "finnhub+twelvedata" || info.Sources[KindQuotes].Name != "finnhub" ||
 		info.Sources[KindCandles].Name != "twelvedata" || info.Sources[KindStatus].Name != "twelvedata" ||
-		info.Sources[KindEarnings].Name != "finnhub" {
+		info.Sources[KindEarnings].Name != "finnhub" || info.Sources[KindFundamentals].Name != "finnhub" {
 		t.Fatalf("unexpected provider info: %+v", info)
 	}
 }
@@ -64,6 +78,31 @@ func TestSingleVendorHasNoEarningsSource(t *testing.T) {
 	}
 	if _, err := s.NextEarnings(context.Background(), "AAPL"); !errors.Is(err, ErrNotConfigured) {
 		t.Fatalf("got %v, want ErrNotConfigured", err)
+	}
+	if _, ok := s.ProviderInfo().Sources[KindFundamentals]; ok {
+		t.Fatal("a vendor without fundamentals should not be listed for them")
+	}
+	if _, err := s.Fundamentals(context.Background(), "AAPL"); !errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("got %v, want ErrNotConfigured", err)
+	}
+}
+
+func TestFundamentalsAreCached(t *testing.T) {
+	clk := &testClock{t: time.Unix(0, 0)}
+	quotes := &fundamentalsFake{earningsFake: &earningsFake{namedFake: namedFake{&fakeProvider{}, "finnhub"}}}
+	s := newTestService(Composite{QuoteSource: quotes, BarSource: &fakeProvider{}}, clk)
+	for range 2 {
+		r, err := s.Fundamentals(context.Background(), "AAPL")
+		if err != nil || r.Industry != "Technology" || r.Freshness.Provider != "finnhub" {
+			t.Fatalf("unexpected result %+v %v", r, err)
+		}
+	}
+	if quotes.calls.Load() != 1 {
+		t.Fatalf("fundamentals should be cached; calls = %d", quotes.calls.Load())
+	}
+	clk.advance(fundamentalsTTL + time.Second)
+	if _, err := s.Fundamentals(context.Background(), "AAPL"); err != nil || quotes.calls.Load() != 2 {
+		t.Fatalf("expired fundamentals should be refetched; calls = %d, err = %v", quotes.calls.Load(), err)
 	}
 }
 

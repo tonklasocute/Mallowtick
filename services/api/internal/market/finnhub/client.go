@@ -1,8 +1,8 @@
 // Package finnhub implements market.Provider against the Finnhub REST API
-// (https://finnhub.io/docs/api) for quotes, symbol search and the earnings
-// calendar. The free plan allows 60 calls a minute but has no historical
-// candles (verified: /stock/candle answers 403), so it is used together with
-// a candle vendor through market.Composite.
+// (https://finnhub.io/docs/api) for quotes, symbol search, the earnings
+// calendar and company fundamentals. The free plan allows 60 calls a minute
+// but has no historical candles (verified: /stock/candle answers 403), so it
+// is used together with a candle vendor through market.Composite.
 package finnhub
 
 import (
@@ -62,9 +62,10 @@ type Client struct {
 }
 
 var (
-	_ market.Provider         = (*Client)(nil)
-	_ market.EarningsProvider = (*Client)(nil)
-	_ market.RangeProvider    = (*Client)(nil)
+	_ market.Provider             = (*Client)(nil)
+	_ market.EarningsProvider     = (*Client)(nil)
+	_ market.RangeProvider        = (*Client)(nil)
+	_ market.FundamentalsProvider = (*Client)(nil)
 )
 
 // New validates cfg and returns a client.

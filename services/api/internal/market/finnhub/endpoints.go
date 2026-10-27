@@ -22,11 +22,31 @@ const earningsHorizon = 90 * 24 * time.Hour
 // parallelCalls bounds concurrent requests for one batch.
 const parallelCalls = 4
 
-// instrumentInfo is the descriptive data a quote needs and /quote lacks.
+// instrumentInfo is the descriptive data a quote needs and /quote lacks, plus
+// the rest of the company profile for Fundamentals.
 type instrumentInfo struct {
 	Name     string
 	Exchange string
 	Currency string
+
+	Industry string
+	Country  string
+	IPODate  string
+	Website  string
+	// Shares is the share count in units, nil when unknown.
+	Shares *float64
+}
+
+// millions is the multiplier for Finnhub's market cap, enterprise value and
+// share count, which are reported in millions.
+const millions = 1e6
+
+func scaled(v *float64, by float64) *float64 {
+	if v == nil {
+		return nil
+	}
+	x := *v * by
+	return &x
 }
 
 // shortExchange turns Finnhub's long exchange names into the usual tickers.
@@ -59,14 +79,22 @@ func (c *Client) instrument(ctx context.Context, sym market.Symbol) (instrumentI
 		return e.Value, nil
 	}
 	var p struct {
-		Name     string `json:"name"`
-		Exchange string `json:"exchange"`
-		Currency string `json:"currency"`
+		Name     string   `json:"name"`
+		Exchange string   `json:"exchange"`
+		Currency string   `json:"currency"`
+		Industry string   `json:"finnhubIndustry"`
+		Country  string   `json:"country"`
+		IPO      string   `json:"ipo"`
+		Website  string   `json:"weburl"`
+		Shares   *float64 `json:"shareOutstanding"`
 	}
 	if err := c.get(ctx, "/stock/profile2", url.Values{"symbol": {string(sym)}}, &p); err != nil {
 		return instrumentInfo{}, err
 	}
-	info := instrumentInfo{Name: p.Name, Exchange: shortExchange(p.Exchange), Currency: p.Currency}
+	info := instrumentInfo{
+		Name: p.Name, Exchange: shortExchange(p.Exchange), Currency: p.Currency,
+		Industry: p.Industry, Country: p.Country, IPODate: p.IPO, Website: p.Website, Shares: scaled(p.Shares, millions),
+	}
 	if info.Name == "" {
 		matches, err := c.search(ctx, string(sym))
 		if err != nil {
@@ -108,6 +136,59 @@ func (c *Client) FiftyTwoWeek(ctx context.Context, sym market.Symbol) (*market.R
 	r := market.Range52{Low: *m.Metric.Low, High: *m.Metric.High}
 	c.ranges.Set(string(sym), r)
 	return &r, nil
+}
+
+// Fundamentals implements market.FundamentalsProvider: the cached company
+// profile plus one /stock/metric call, which also refreshes the 52-week range.
+// ETFs have no profile and only price-based metrics.
+func (c *Client) Fundamentals(ctx context.Context, sym market.Symbol) (market.Fundamentals, error) {
+	info, err := c.instrument(ctx, sym)
+	if err != nil {
+		return market.Fundamentals{}, err
+	}
+	var m struct {
+		Metric struct {
+			High             *float64 `json:"52WeekHigh"`
+			Low              *float64 `json:"52WeekLow"`
+			MarketCap        *float64 `json:"marketCapitalization"`
+			EnterpriseValue  *float64 `json:"enterpriseValue"`
+			PE               *float64 `json:"peTTM"`
+			PS               *float64 `json:"psTTM"`
+			PB               *float64 `json:"pbQuarterly"`
+			EPS              *float64 `json:"epsTTM"`
+			RevenueGrowthYoY *float64 `json:"revenueGrowthTTMYoy"`
+			RevenueGrowth5Y  *float64 `json:"revenueGrowth5Y"`
+			EPSGrowthYoY     *float64 `json:"epsGrowthTTMYoy"`
+			GrossMargin      *float64 `json:"grossMarginTTM"`
+			OperatingMargin  *float64 `json:"operatingMarginTTM"`
+			NetMargin        *float64 `json:"netProfitMarginTTM"`
+			ROE              *float64 `json:"roeTTM"`
+			CurrentRatio     *float64 `json:"currentRatioQuarterly"`
+			DebtToEquity     *float64 `json:"totalDebt/totalEquityQuarterly"`
+			DividendYield    *float64 `json:"dividendYieldIndicatedAnnual"`
+			PayoutRatio      *float64 `json:"payoutRatioTTM"`
+			Beta             *float64 `json:"beta"`
+		} `json:"metric"`
+	}
+	if err := c.get(ctx, "/stock/metric", url.Values{"symbol": {string(sym)}, "metric": {"all"}}, &m); err != nil {
+		return market.Fundamentals{}, err
+	}
+	v := m.Metric
+	if v.High != nil && v.Low != nil {
+		c.ranges.Set(string(sym), market.Range52{Low: *v.Low, High: *v.High})
+	}
+	return market.Fundamentals{
+		Symbol: string(sym), Industry: info.Industry, Country: info.Country, IPODate: info.IPODate,
+		Website: info.Website, SharesOutstanding: info.Shares,
+		Metrics: market.KeyMetrics{
+			MarketCap: scaled(v.MarketCap, millions), EnterpriseValue: scaled(v.EnterpriseValue, millions),
+			PE: v.PE, PS: v.PS, PB: v.PB, EPS: v.EPS,
+			RevenueGrowthYoY: v.RevenueGrowthYoY, RevenueGrowth5Y: v.RevenueGrowth5Y, EPSGrowthYoY: v.EPSGrowthYoY,
+			GrossMargin: v.GrossMargin, OperatingMargin: v.OperatingMargin, NetMargin: v.NetMargin, ROE: v.ROE,
+			CurrentRatio: v.CurrentRatio, DebtToEquity: v.DebtToEquity,
+			DividendYield: v.DividendYield, PayoutRatio: v.PayoutRatio, Beta: v.Beta,
+		},
+	}, nil
 }
 
 func (c *Client) quote(ctx context.Context, sym market.Symbol) (market.Quote, error) {

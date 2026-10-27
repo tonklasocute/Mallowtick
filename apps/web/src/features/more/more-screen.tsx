@@ -67,6 +67,7 @@ const SOURCE_ROWS: [DataKind, string][] = [
   ["candles", "กราฟแท่งเทียน"],
   ["status", "สถานะตลาด"],
   ["earnings", "วันประกาศงบ"],
+  ["fundamentals", "ข้อมูลบริษัท"],
 ];
 
 /** "ข้อมูลตลาดโดย Finnhub และ Twelve Data" from the vendors actually in use. */

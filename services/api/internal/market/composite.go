@@ -10,15 +10,16 @@ import (
 type DataKind string
 
 const (
-	KindQuotes   DataKind = "quotes"
-	KindSearch   DataKind = "search"
-	KindCandles  DataKind = "candles"
-	KindStatus   DataKind = "status"
-	KindEarnings DataKind = "earnings"
+	KindQuotes       DataKind = "quotes"
+	KindSearch       DataKind = "search"
+	KindCandles      DataKind = "candles"
+	KindStatus       DataKind = "status"
+	KindEarnings     DataKind = "earnings"
+	KindFundamentals DataKind = "fundamentals"
 )
 
 // DataKinds lists every kind in display order.
-var DataKinds = []DataKind{KindQuotes, KindSearch, KindCandles, KindStatus, KindEarnings}
+var DataKinds = []DataKind{KindQuotes, KindSearch, KindCandles, KindStatus, KindEarnings, KindFundamentals}
 
 // MultiSource is implemented by providers that combine vendors. SourceFor
 // returns the vendor behind a kind of data, so freshness metadata names the
@@ -41,6 +42,45 @@ type EarningsEvent struct {
 	RevenueEstimate *float64 `json:"revenueEstimate"`
 }
 
+// Fundamentals describes a listed company and how the market values it. Every
+// figure is optional: ETFs and loss-making companies leave many of them nil.
+type Fundamentals struct {
+	Symbol   string `json:"symbol"`
+	Industry string `json:"industry"`
+	Country  string `json:"country"`
+	// IPODate is YYYY-MM-DD, empty when unknown.
+	IPODate           string     `json:"ipoDate"`
+	Website           string     `json:"website"`
+	SharesOutstanding *float64   `json:"sharesOutstanding"`
+	Metrics           KeyMetrics `json:"metrics"`
+}
+
+// KeyMetrics are the vendor's valuation and financial ratios. Money is in the
+// listing currency, percentages are in percent units (12.5 means 12.5%), and
+// TTM means the trailing twelve months.
+type KeyMetrics struct {
+	MarketCap       *float64 `json:"marketCap"`
+	EnterpriseValue *float64 `json:"enterpriseValue"`
+	PE              *float64 `json:"peTTM"`
+	PS              *float64 `json:"psTTM"`
+	PB              *float64 `json:"pb"`
+	EPS             *float64 `json:"epsTTM"`
+	// RevenueGrowthYoY compares the last twelve months with the twelve before;
+	// RevenueGrowth5Y is the five-year compound annual rate.
+	RevenueGrowthYoY *float64 `json:"revenueGrowthYoY"`
+	RevenueGrowth5Y  *float64 `json:"revenueGrowth5Y"`
+	EPSGrowthYoY     *float64 `json:"epsGrowthYoY"`
+	GrossMargin      *float64 `json:"grossMarginTTM"`
+	OperatingMargin  *float64 `json:"operatingMarginTTM"`
+	NetMargin        *float64 `json:"netMarginTTM"`
+	ROE              *float64 `json:"roeTTM"`
+	CurrentRatio     *float64 `json:"currentRatio"`
+	DebtToEquity     *float64 `json:"debtToEquity"`
+	DividendYield    *float64 `json:"dividendYield"`
+	PayoutRatio      *float64 `json:"payoutRatioTTM"`
+	Beta             *float64 `json:"beta"`
+}
+
 // RangeProvider is implemented by vendors whose quotes lack the 52-week range
 // but can look it up separately (one extra call, worth it on Stock Detail only).
 type RangeProvider interface {
@@ -54,21 +94,28 @@ type EarningsProvider interface {
 	NextEarnings(ctx context.Context, symbol Symbol, from time.Time) (*EarningsEvent, error)
 }
 
-// Composite takes quotes, search and earnings from one vendor and candles and
+// FundamentalsProvider is implemented by vendors that publish company profiles
+// and financial ratios.
+type FundamentalsProvider interface {
+	Fundamentals(ctx context.Context, symbol Symbol) (Fundamentals, error)
+}
+
+// Composite takes quotes, search, earnings and fundamentals from one vendor and candles and
 // market status from another. It is used when a second vendor's free plan
 // has a far larger request allowance but no historical bars.
 type Composite struct {
-	// QuoteSource serves quotes, search and (when it implements
-	// EarningsProvider) earnings.
+	// QuoteSource serves quotes, search and, when it implements the matching
+	// interfaces, earnings and fundamentals.
 	QuoteSource Provider
 	// BarSource serves candles and market status.
 	BarSource Provider
 }
 
 var (
-	_ Provider         = Composite{}
-	_ MultiSource      = Composite{}
-	_ EarningsProvider = Composite{}
+	_ Provider             = Composite{}
+	_ MultiSource          = Composite{}
+	_ EarningsProvider     = Composite{}
+	_ FundamentalsProvider = Composite{}
 )
 
 func (c Composite) Name() string     { return c.QuoteSource.Name() + "+" + c.BarSource.Name() }
@@ -106,4 +153,12 @@ func (c Composite) NextEarnings(ctx context.Context, symbol Symbol, from time.Ti
 		return e.NextEarnings(ctx, symbol, from)
 	}
 	return nil, ErrNotConfigured
+}
+
+// Fundamentals implements FundamentalsProvider through the quotes vendor.
+func (c Composite) Fundamentals(ctx context.Context, symbol Symbol) (Fundamentals, error) {
+	if f, ok := c.QuoteSource.(FundamentalsProvider); ok && c.QuoteSource.Configured() {
+		return f.Fundamentals(ctx, symbol)
+	}
+	return Fundamentals{}, ErrNotConfigured
 }

@@ -142,7 +142,7 @@ export interface MarketStatus {
 }
 
 /** Kinds of market data; each may come from a different vendor. */
-export type DataKind = "quotes" | "search" | "candles" | "status" | "earnings";
+export type DataKind = "quotes" | "search" | "candles" | "status" | "earnings" | "fundamentals";
 
 export interface Health {
   status: string;
@@ -150,7 +150,10 @@ export interface Health {
     name: string;
     configured: boolean;
     latency: Latency;
-    /** The vendor behind each kind of data; "earnings" is absent when no vendor has a calendar. */
+    /**
+     * The vendor behind each kind of data; "earnings" and "fundamentals" are absent when no
+     * vendor publishes them.
+     */
     sources?: Partial<Record<DataKind, { name: string; configured: boolean }>>;
   };
   time: string;
@@ -172,6 +175,45 @@ export interface EarningsResult {
   symbol: string;
   /** Null when no report is scheduled within the vendor's calendar. */
   next: EarningsEvent | null;
+  freshness: Freshness;
+}
+
+/**
+ * Vendor ratios. Money is in the listing currency, percentages are in percent units
+ * (12.5 means 12.5%), and TTM means the trailing twelve months. Null when not reported.
+ */
+export interface KeyMetrics {
+  marketCap: number | null;
+  enterpriseValue: number | null;
+  peTTM: number | null;
+  psTTM: number | null;
+  pb: number | null;
+  epsTTM: number | null;
+  revenueGrowthYoY: number | null;
+  /** Five-year compound annual growth rate. */
+  revenueGrowth5Y: number | null;
+  epsGrowthYoY: number | null;
+  grossMarginTTM: number | null;
+  operatingMarginTTM: number | null;
+  netMarginTTM: number | null;
+  roeTTM: number | null;
+  currentRatio: number | null;
+  debtToEquity: number | null;
+  dividendYield: number | null;
+  payoutRatioTTM: number | null;
+  beta: number | null;
+}
+
+export interface Fundamentals {
+  symbol: string;
+  /** Vendor's industry name, in English; empty for ETFs. */
+  industry: string;
+  country: string;
+  /** YYYY-MM-DD, empty when unknown. */
+  ipoDate: string;
+  website: string;
+  sharesOutstanding: number | null;
+  metrics: KeyMetrics;
   freshness: Freshness;
 }
 
