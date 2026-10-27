@@ -267,12 +267,12 @@ export function CandlestickChart({
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const ink = token("ink", "#24403d");
+    const ink = token("ink", "#1d3b32");
     const chart = createChart(el, {
       autoSize: true,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: token("slate", "#6b7280"),
+        textColor: token("slate", "#5f6e68"),
         // The app font (Nunito), resolved from the next/font variables on <html>.
         fontFamily: getComputedStyle(el).fontFamily,
         fontSize: 11,
@@ -361,7 +361,7 @@ export function CandlestickChart({
     if (!chart) return;
     const common = {
       lastValueVisible: false,
-      priceLineColor: withAlpha(token("ink", "#24403d"), "b3"),
+      priceLineColor: withAlpha(token("ink", "#1d3b32"), "b3"),
       priceLineStyle: LineStyle.SparseDotted,
       priceFormat: { type: "price", precision: 2, minMove: 0.01 },
     } as const;
@@ -375,8 +375,8 @@ export function CandlestickChart({
         }),
       };
     } else {
-      const up = token("candle-up", "#2ba47a");
-      const down = token("candle-down", "#ee6a87");
+      const up = token("candle-up", "#25a874");
+      const down = token("candle-down", "#ee6a86");
       mainRef.current = {
         kind,
         series: chart.addSeries(CandlestickSeries, {
@@ -403,15 +403,15 @@ export function CandlestickChart({
     const main = mainRef.current;
     const volume = volumeRef.current;
     if (!main || !volume) return;
-    const up = withAlpha(token("candle-up", "#2ba47a"), "4d");
-    const down = withAlpha(token("candle-down", "#ee6a87"), "4d");
+    const up = withAlpha(token("candle-up", "#25a874"), "4d");
+    const down = withAlpha(token("candle-down", "#ee6a86"), "4d");
     if (main.kind === "line") {
       const first = points.candles[0];
       const last = points.candles.at(-1);
       const color =
         first && last && last.close < first.open
-          ? token("candle-down", "#ee6a87")
-          : token("candle-up", "#2ba47a");
+          ? token("candle-down", "#ee6a86")
+          : token("candle-up", "#25a874");
       main.series.applyOptions({
         lineColor: color,
         topColor: withAlpha(color, "42"),
@@ -466,7 +466,7 @@ export function CandlestickChart({
     priceLinesRef.current = levels.map((l) =>
       candle.createPriceLine({
         price: l.price,
-        color: token(l.type, l.type === "support" ? "#2f9c6f" : "#e0627a"),
+        color: token(l.type, l.type === "support" ? "#25a874" : "#ee6a86"),
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: false,

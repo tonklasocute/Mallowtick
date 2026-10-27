@@ -1,55 +1,78 @@
 @import "tailwindcss";
 
 /*
- * Mallowtick design tokens (see docs/design-reference.png).
- * Every color in components comes from here, as Tailwind utilities
- * (bg-mint, text-ink, …) or as CSS variables (var(--color-mint)) for
- * canvas-based charts.
+ * Mallowtick design tokens. Values follow the ".app" tokens of the Claude design
+ * canvas (shared by its Home, chart and Stock Detail artboards); the brand
+ * pastels come from docs/design-reference.png. Every color in components comes
+ * from here, as Tailwind utilities (bg-mint, text-ink, …) or as CSS variables
+ * (var(--color-mint)) for canvas-based charts.
  */
 @theme {
   /* Brand palette */
   --color-mint: #a7e3c2;
-  --color-mint-soft: #e3f6eb;
-  --color-mint-deep: #237a57;
+  --color-mint-soft: #e2f5eb;
+  --color-mint-deep: #17704c;
   --color-sky: #bfe8ff;
-  --color-sky-soft: #e6f4ff;
-  --color-cream: #fff9f0;
-  --color-cream-deep: #fbefdd;
+  --color-sky-soft: #ddf0fb;
+  --color-sky-ink: #1f5f86;
+  --color-cream: #fff7ec;
+  --color-cream-deep: #fbf3e8;
   --color-accent: #ffb6c1;
-  --color-accent-soft: #ffe8ec;
+  --color-accent-soft: #ffe3ea;
   --color-peach: #f3d9c0;
-  /* Extra pastels for ticker chips and section markers */
+  /* Extra pastels for ticker chips, section markers and card icons, each with its ink */
   --color-honey: #fff0cf;
   --color-honey-deep: #ffe2a3;
+  --color-honey-ink: #7a4f0c;
   --color-lavender: #eee8ff;
+  --color-lavender-ink: #5a3fb8;
 
   /* Text */
-  --color-ink: #24403d;
-  --color-slate: #6b7280;
-  --color-slate-strong: #5b6472;
+  --color-ink: #1d3b32;
+  --color-slate: #5f6e68;
+  --color-slate-strong: #4f5d57;
 
   /* Surfaces */
   --color-surface: #ffffff;
-  --color-line: #efe7da;
+  --color-line: #f0e5d6;
+  /* Dashed chart grid */
+  --color-grid: #efe4d4;
+  /* Centre lines and connectors in small charts */
+  --color-line-strong: #d9cbb6;
+  /* Outline of an estimate next to an actual value, and muted numbers such as zero counts */
+  --color-estimate: #9aa8a2;
+  --color-faint: #a9b5b0;
 
-  /* Market semantics (AA contrast on white and cream) */
-  --color-up: #187a50;
-  --color-up-soft: #e3f6eb;
-  --color-down: #c2374f;
-  --color-down-soft: #ffe8ec;
-  --color-support: #2f9c6f;
-  --color-resistance: #e0627a;
-  --color-volume: #c9d7e3;
   /*
-   * Analyst ratings: a diverging scale (green buy arm, grey hold, red sell arm). Each arm
-   * steps light to dark and its light end clears 2:1 on white (dataviz palette checks);
-   * the grey is below 3:1, so counts are always shown as text beside the bar.
+   * Market semantics. "up"/"down" are for text (AA on white and cream); the
+   * "-fill" variants are the brighter canvas colours for bars, dots and meters.
    */
-  --color-rating-strong-buy: #187a50;
-  --color-rating-buy: #62bd8e;
-  --color-rating-hold: #9ca3af;
-  --color-rating-sell: #ec8a9c;
-  --color-rating-strong-sell: #c2374f;
+  --color-up: #17704c;
+  --color-up-soft: #ddf4e9;
+  --color-up-fill: #25a874;
+  --color-down: #ae2f4d;
+  --color-down-soft: #ffe5eb;
+  --color-down-fill: #ee6a86;
+  --color-support: #25a874;
+  --color-resistance: #ee6a86;
+  /* Level boxes on Stock Detail: a faint tint with a soft edge */
+  --color-support-tint: #f5fcf8;
+  --color-support-edge: #c9eedc;
+  --color-resistance-tint: #fff8fa;
+  --color-resistance-edge: #ffd6df;
+  --color-volume: #c9d7e3;
+  /* The S&P 500 in return comparisons */
+  --color-spx: #8fa7c9;
+  /*
+   * Analyst ratings, from the design canvas: a diverging scale (green buy arm, grey
+   * hold, red sell arm). The light steps are below 3:1 on white, so the counts are
+   * always shown as text beside the bar.
+   */
+  --color-rating-strong-buy: #17704c;
+  --color-rating-buy: #5cc79a;
+  --color-rating-hold: #b4bfba;
+  --color-rating-sell: #f7a9ba;
+  --color-rating-strong-sell: #d2445f;
 
   /* Nunito for Latin and numbers, Mitr for Thai (set up in app/layout.tsx). */
   --font-sans:
@@ -60,8 +83,12 @@
     BlinkMacSystemFont, "Segoe UI", sans-serif;
 
   --radius-card: 1.25rem;
-  --shadow-soft: 0 1px 2px rgb(36 64 61 / 0.04), 0 6px 20px rgb(36 64 61 / 0.06);
-  --shadow-float: 0 18px 36px -16px rgb(36 64 61 / 0.35);
+  /* Stock Detail cards (design canvas: 26px) */
+  --radius-panel: 1.625rem;
+  --shadow-soft: 0 1px 0 rgb(29 59 50 / 0.03), 0 14px 30px -20px rgb(140 100 40 / 0.35);
+  --shadow-float: 0 18px 36px -16px rgb(29 59 50 / 0.35);
+  /* Selected segment of a segmented control */
+  --shadow-pressed: 0 6px 14px -6px rgb(29 59 50 / 0.55);
 
   /* Soft ring that spreads from the chart's last-price dot. */
   --animate-pulse-dot: pulse-dot 1.8s ease-out infinite;
@@ -97,12 +124,12 @@
  * inline styles read them directly.
  */
 @theme static {
-  --color-candle-up: #2ba47a;
-  --color-candle-down: #ee6a87;
-  --color-ema-1: #f5a524;
-  --color-ema-2: #4aa8ea;
-  --color-ema-3: #a07ce6;
-  --color-ema-4: #ec5f9a;
+  --color-candle-up: #25a874;
+  --color-candle-down: #ee6a86;
+  --color-ema-1: #f2a31f;
+  --color-ema-2: #3fa7e8;
+  --color-ema-3: #9b7bf0;
+  --color-ema-4: #ec6fae;
 }
 
 @layer base {
