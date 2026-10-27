@@ -47,6 +47,8 @@ const (
 	// The vendor recomputes ratios from the latest close, so a few hours is
 	// close enough and costs at most a handful of calls a day per symbol.
 	fundamentalsTTL = 6 * time.Hour
+	// Analyst rating counts are published monthly.
+	ratingsTTL = 12 * time.Hour
 )
 
 // Service is the application layer between transports and a Provider.
@@ -62,7 +64,9 @@ type Service struct {
 	instruments  *cache.TTL[Instrument]
 	status       *cache.TTL[MarketStatus]
 	earnings     *cache.TTL[*EarningsEvent]
+	surprises    *cache.TTL[[]EarningsSurprise]
 	fundamentals *cache.TTL[Fundamentals]
+	ratings      *cache.TTL[[]RecommendationTrend]
 }
 
 // NewService wires a provider with caches.
@@ -84,7 +88,9 @@ func NewService(p Provider, cfg ServiceConfig) *Service {
 		instruments:  cache.New[Instrument](instrumentTTL, instrumentTTL, 2000, cfg.Now),
 		status:       cache.New[MarketStatus](statusTTL, retain, 1, cfg.Now),
 		earnings:     cache.New[*EarningsEvent](earningsTTL, retain, 1000, cfg.Now),
+		surprises:    cache.New[[]EarningsSurprise](earningsTTL, retain, 1000, cfg.Now),
 		fundamentals: cache.New[Fundamentals](fundamentalsTTL, retain, 1000, cfg.Now),
+		ratings:      cache.New[[]RecommendationTrend](ratingsTTL, retain, 1000, cfg.Now),
 	}
 }
 
@@ -511,6 +517,62 @@ func (s *Service) NextEarnings(ctx context.Context, symbol Symbol) (EarningsResu
 		return EarningsResult{}, err
 	}
 	return EarningsResult{Symbol: symbol, Next: e.Value, Freshness: s.freshness(KindEarnings, nil, e.StoredAt, stale)}, nil
+}
+
+// EarningsHistoryResult is the latest reported quarters, newest first.
+type EarningsHistoryResult struct {
+	Symbol    Symbol             `json:"symbol"`
+	Quarters  []EarningsSurprise `json:"quarters"`
+	Freshness Freshness          `json:"freshness"`
+}
+
+// EarningsHistory returns reported EPS against estimates for the latest
+// quarters. It fails with ErrNotConfigured like NextEarnings.
+func (s *Service) EarningsHistory(ctx context.Context, symbol Symbol) (EarningsHistoryResult, error) {
+	ep, ok := s.source(KindEarnings).(EarningsProvider)
+	if !ok {
+		return EarningsHistoryResult{}, ErrNotConfigured
+	}
+	e, stale, err := load(ctx, s, s.surprises, "surprises:"+string(symbol), fixedTTL[[]EarningsSurprise](earningsTTL),
+		func(fctx context.Context) ([]EarningsSurprise, error) { return ep.EarningsHistory(fctx, symbol) })
+	if err != nil {
+		return EarningsHistoryResult{}, err
+	}
+	return EarningsHistoryResult{
+		Symbol: symbol, Quarters: nonNil(e.Value), Freshness: s.freshness(KindEarnings, nil, e.StoredAt, stale),
+	}, nil
+}
+
+// RecommendationsResult is the monthly analyst rating counts, newest first.
+type RecommendationsResult struct {
+	Symbol    Symbol                `json:"symbol"`
+	Trends    []RecommendationTrend `json:"trends"`
+	Freshness Freshness             `json:"freshness"`
+}
+
+// Recommendations returns analyst rating counts. It fails with
+// ErrNotConfigured like Fundamentals.
+func (s *Service) Recommendations(ctx context.Context, symbol Symbol) (RecommendationsResult, error) {
+	fp, ok := s.source(KindFundamentals).(FundamentalsProvider)
+	if !ok {
+		return RecommendationsResult{}, ErrNotConfigured
+	}
+	e, stale, err := load(ctx, s, s.ratings, "ratings:"+string(symbol), fixedTTL[[]RecommendationTrend](ratingsTTL),
+		func(fctx context.Context) ([]RecommendationTrend, error) { return fp.Recommendations(fctx, symbol) })
+	if err != nil {
+		return RecommendationsResult{}, err
+	}
+	return RecommendationsResult{
+		Symbol: symbol, Trends: nonNil(e.Value), Freshness: s.freshness(KindFundamentals, nil, e.StoredAt, stale),
+	}, nil
+}
+
+// nonNil turns a nil slice into an empty one so it encodes as [] not null.
+func nonNil[T any](v []T) []T {
+	if v == nil {
+		return []T{}
+	}
+	return v
 }
 
 // FundamentalsResult is a company profile and its key metrics.

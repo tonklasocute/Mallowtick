@@ -79,6 +79,43 @@ type KeyMetrics struct {
 	DividendYield    *float64 `json:"dividendYield"`
 	PayoutRatio      *float64 `json:"payoutRatioTTM"`
 	Beta             *float64 `json:"beta"`
+	// Price returns in percent, and the S&P 500's over the same period.
+	PriceReturnYTD   *float64 `json:"priceReturnYTD"`
+	PriceReturn1Y    *float64 `json:"priceReturn1Y"`
+	SP500ReturnYTD   *float64 `json:"sp500ReturnYTD"`
+	SP500Return1Y    *float64 `json:"sp500Return1Y"`
+	FiftyTwoWeekHigh *float64 `json:"fiftyTwoWeekHigh"`
+	FiftyTwoWeekLow  *float64 `json:"fiftyTwoWeekLow"`
+	// FiftyTwoWeekHighDate and FiftyTwoWeekLowDate are YYYY-MM-DD, empty when unknown.
+	FiftyTwoWeekHighDate string `json:"fiftyTwoWeekHighDate"`
+	FiftyTwoWeekLowDate  string `json:"fiftyTwoWeekLowDate"`
+}
+
+// EarningsSurprise is one reported quarter: actual EPS against the analysts'
+// consensus estimate.
+type EarningsSurprise struct {
+	// Period is the end of the fiscal quarter (YYYY-MM-DD). Year and Quarter
+	// are fiscal, so they can differ from the calendar (Apple's Q3 ends in June).
+	Period   string   `json:"period"`
+	Year     int      `json:"year"`
+	Quarter  int      `json:"quarter"`
+	Actual   *float64 `json:"actual"`
+	Estimate *float64 `json:"estimate"`
+	// Surprise is Actual - Estimate; SurprisePercent is that as a percentage
+	// of the estimate's size, so a smaller loss than expected is positive.
+	Surprise        *float64 `json:"surprise"`
+	SurprisePercent *float64 `json:"surprisePercent"`
+}
+
+// RecommendationTrend counts the analyst ratings in effect for one month.
+type RecommendationTrend struct {
+	// Period is the first day of the month (YYYY-MM-DD).
+	Period     string `json:"period"`
+	StrongBuy  int    `json:"strongBuy"`
+	Buy        int    `json:"buy"`
+	Hold       int    `json:"hold"`
+	Sell       int    `json:"sell"`
+	StrongSell int    `json:"strongSell"`
 }
 
 // RangeProvider is implemented by vendors whose quotes lack the 52-week range
@@ -92,12 +129,16 @@ type EarningsProvider interface {
 	// NextEarnings returns the next report on or after from, or nil when none
 	// is scheduled within the provider's calendar.
 	NextEarnings(ctx context.Context, symbol Symbol, from time.Time) (*EarningsEvent, error)
+	// EarningsHistory returns the latest reported quarters, newest first.
+	EarningsHistory(ctx context.Context, symbol Symbol) ([]EarningsSurprise, error)
 }
 
 // FundamentalsProvider is implemented by vendors that publish company profiles
 // and financial ratios.
 type FundamentalsProvider interface {
 	Fundamentals(ctx context.Context, symbol Symbol) (Fundamentals, error)
+	// Recommendations returns monthly analyst rating counts, newest first.
+	Recommendations(ctx context.Context, symbol Symbol) ([]RecommendationTrend, error)
 }
 
 // Composite takes quotes, search, earnings and fundamentals from one vendor and candles and
@@ -155,10 +196,26 @@ func (c Composite) NextEarnings(ctx context.Context, symbol Symbol, from time.Ti
 	return nil, ErrNotConfigured
 }
 
+// EarningsHistory implements EarningsProvider through the quotes vendor.
+func (c Composite) EarningsHistory(ctx context.Context, symbol Symbol) ([]EarningsSurprise, error) {
+	if e, ok := c.QuoteSource.(EarningsProvider); ok && c.QuoteSource.Configured() {
+		return e.EarningsHistory(ctx, symbol)
+	}
+	return nil, ErrNotConfigured
+}
+
 // Fundamentals implements FundamentalsProvider through the quotes vendor.
 func (c Composite) Fundamentals(ctx context.Context, symbol Symbol) (Fundamentals, error) {
 	if f, ok := c.QuoteSource.(FundamentalsProvider); ok && c.QuoteSource.Configured() {
 		return f.Fundamentals(ctx, symbol)
 	}
 	return Fundamentals{}, ErrNotConfigured
+}
+
+// Recommendations implements FundamentalsProvider through the quotes vendor.
+func (c Composite) Recommendations(ctx context.Context, symbol Symbol) ([]RecommendationTrend, error) {
+	if f, ok := c.QuoteSource.(FundamentalsProvider); ok && c.QuoteSource.Configured() {
+		return f.Recommendations(ctx, symbol)
+	}
+	return nil, ErrNotConfigured
 }

@@ -25,7 +25,9 @@ type MarketService interface {
 	MarketStatus(ctx context.Context) (market.StatusResult, error)
 	Overview(ctx context.Context) (market.Overview, error)
 	NextEarnings(ctx context.Context, symbol market.Symbol) (market.EarningsResult, error)
+	EarningsHistory(ctx context.Context, symbol market.Symbol) (market.EarningsHistoryResult, error)
 	Fundamentals(ctx context.Context, symbol market.Symbol) (market.FundamentalsResult, error)
+	Recommendations(ctx context.Context, symbol market.Symbol) (market.RecommendationsResult, error)
 }
 
 // Options configures the router.
@@ -70,7 +72,9 @@ func NewRouter(opts Options) http.Handler {
 	v1.GET("/stocks/:symbol/candles", h.candles)
 	v1.GET("/stocks/:symbol/levels", h.levels)
 	v1.GET("/stocks/:symbol/earnings", h.earnings)
+	v1.GET("/stocks/:symbol/earnings/history", h.earningsHistory)
 	v1.GET("/stocks/:symbol/fundamentals", h.fundamentals)
+	v1.GET("/stocks/:symbol/recommendations", h.recommendations)
 	return r
 }
 
@@ -220,6 +224,32 @@ func (h *handlers) fundamentals(c *gin.Context) {
 		return
 	}
 	res, err := h.svc.Fundamentals(c.Request.Context(), sym)
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	ok(c, res)
+}
+
+func (h *handlers) earningsHistory(c *gin.Context) {
+	sym, valid := h.symbolParam(c)
+	if !valid {
+		return
+	}
+	res, err := h.svc.EarningsHistory(c.Request.Context(), sym)
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	ok(c, res)
+}
+
+func (h *handlers) recommendations(c *gin.Context) {
+	sym, valid := h.symbolParam(c)
+	if !valid {
+		return
+	}
+	res, err := h.svc.Recommendations(c.Request.Context(), sym)
 	if err != nil {
 		fail(c, h.log, err)
 		return

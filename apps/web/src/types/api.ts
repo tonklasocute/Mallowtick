@@ -202,6 +202,16 @@ export interface KeyMetrics {
   dividendYield: number | null;
   payoutRatioTTM: number | null;
   beta: number | null;
+  /** Price returns in percent, and the S&P 500's over the same period. */
+  priceReturnYTD: number | null;
+  priceReturn1Y: number | null;
+  sp500ReturnYTD: number | null;
+  sp500Return1Y: number | null;
+  fiftyTwoWeekHigh: number | null;
+  fiftyTwoWeekLow: number | null;
+  /** YYYY-MM-DD, empty when unknown. */
+  fiftyTwoWeekHighDate: string;
+  fiftyTwoWeekLowDate: string;
 }
 
 export interface Fundamentals {
@@ -214,6 +224,45 @@ export interface Fundamentals {
   website: string;
   sharesOutstanding: number | null;
   metrics: KeyMetrics;
+  freshness: Freshness;
+}
+
+/** One reported quarter: actual EPS against the consensus estimate. */
+export interface EarningsSurprise {
+  /** End of the fiscal quarter, YYYY-MM-DD. */
+  period: string;
+  /** Fiscal year and quarter; they can differ from the calendar (Apple's Q3 ends in June). */
+  year: number;
+  quarter: number;
+  actual: number | null;
+  estimate: number | null;
+  surprise: number | null;
+  /** Surprise as a percentage of the estimate's size; positive means better than expected. */
+  surprisePercent: number | null;
+}
+
+export interface EarningsHistory {
+  symbol: string;
+  /** Newest first; empty for ETFs. */
+  quarters: EarningsSurprise[];
+  freshness: Freshness;
+}
+
+/** Analyst ratings in effect for one month. */
+export interface RecommendationTrend {
+  /** First day of the month, YYYY-MM-DD. */
+  period: string;
+  strongBuy: number;
+  buy: number;
+  hold: number;
+  sell: number;
+  strongSell: number;
+}
+
+export interface Recommendations {
+  symbol: string;
+  /** Newest first; empty for ETFs. */
+  trends: RecommendationTrend[];
   freshness: Freshness;
 }
 

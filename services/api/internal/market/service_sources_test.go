@@ -28,6 +28,11 @@ func (e *earningsFake) NextEarnings(context.Context, Symbol, time.Time) (*Earnin
 	return e.next, nil
 }
 
+func (e *earningsFake) EarningsHistory(context.Context, Symbol) ([]EarningsSurprise, error) {
+	e.calls.Add(1)
+	return nil, nil // e.g. an ETF: no reported quarters
+}
+
 // fundamentalsFake is a quote vendor that, like Finnhub, publishes an earnings
 // calendar and company fundamentals.
 type fundamentalsFake struct {
@@ -38,6 +43,11 @@ type fundamentalsFake struct {
 func (f *fundamentalsFake) Fundamentals(_ context.Context, sym Symbol) (Fundamentals, error) {
 	f.calls.Add(1)
 	return Fundamentals{Symbol: string(sym), Industry: "Technology"}, nil
+}
+
+func (f *fundamentalsFake) Recommendations(context.Context, Symbol) ([]RecommendationTrend, error) {
+	f.calls.Add(1)
+	return []RecommendationTrend{{Period: "2026-10-01", StrongBuy: 7, Buy: 16, Hold: 5}}, nil
 }
 
 func int64p(n int64) *int64 { return &n }
@@ -198,5 +208,25 @@ func TestSingleQuoteAddsTheRangeEvenWhenCachedFromABatch(t *testing.T) {
 	got, err := s.Quote(ctx, "AAPL")
 	if err != nil || got.FiftyTwoWeek == nil || got.FiftyTwoWeek.High != 351.73 {
 		t.Fatalf("single quote should carry the range: %+v %v", got.FiftyTwoWeek, err)
+	}
+}
+
+func TestEarningsHistoryAndRecommendationsAreCached(t *testing.T) {
+	clk := &testClock{t: time.Unix(0, 0)}
+	quotes := &fundamentalsFake{earningsFake: &earningsFake{namedFake: namedFake{&fakeProvider{}, "finnhub"}}}
+	s := newTestService(Composite{QuoteSource: quotes, BarSource: &fakeProvider{}}, clk)
+	ctx := context.Background()
+	for range 2 {
+		h, err := s.EarningsHistory(ctx, "SPY")
+		if err != nil || h.Quarters == nil || len(h.Quarters) != 0 || h.Freshness.Provider != "finnhub" {
+			t.Fatalf("no quarters should be an empty list, not null: %+v %v", h, err)
+		}
+		r, err := s.Recommendations(ctx, "RKLB")
+		if err != nil || len(r.Trends) != 1 || r.Trends[0].Buy != 16 {
+			t.Fatalf("unexpected recommendations %+v %v", r, err)
+		}
+	}
+	if quotes.earningsFake.calls.Load() != 1 || quotes.calls.Load() != 1 {
+		t.Fatalf("both should be cached; calls = %d, %d", quotes.earningsFake.calls.Load(), quotes.calls.Load())
 	}
 }

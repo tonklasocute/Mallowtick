@@ -40,6 +40,16 @@
   --color-support: #2f9c6f;
   --color-resistance: #e0627a;
   --color-volume: #c9d7e3;
+  /*
+   * Analyst ratings: a diverging scale (green buy arm, grey hold, red sell arm). Each arm
+   * steps light to dark and its light end clears 2:1 on white (dataviz palette checks);
+   * the grey is below 3:1, so counts are always shown as text beside the bar.
+   */
+  --color-rating-strong-buy: #187a50;
+  --color-rating-buy: #62bd8e;
+  --color-rating-hold: #9ca3af;
+  --color-rating-sell: #ec8a9c;
+  --color-rating-strong-sell: #c2374f;
 
   /* Nunito for Latin and numbers, Mitr for Thai (set up in app/layout.tsx). */
   --font-sans:

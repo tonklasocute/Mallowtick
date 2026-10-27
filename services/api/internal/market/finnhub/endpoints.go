@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -168,6 +170,12 @@ func (c *Client) Fundamentals(ctx context.Context, sym market.Symbol) (market.Fu
 			DividendYield    *float64 `json:"dividendYieldIndicatedAnnual"`
 			PayoutRatio      *float64 `json:"payoutRatioTTM"`
 			Beta             *float64 `json:"beta"`
+			ReturnYTD        *float64 `json:"yearToDatePriceReturnDaily"`
+			Return1Y         *float64 `json:"52WeekPriceReturnDaily"`
+			RelativeYTD      *float64 `json:"priceRelativeToS&P500Ytd"`
+			Relative1Y       *float64 `json:"priceRelativeToS&P50052Week"`
+			HighDate         string   `json:"52WeekHighDate"`
+			LowDate          string   `json:"52WeekLowDate"`
 		} `json:"metric"`
 	}
 	if err := c.get(ctx, "/stock/metric", url.Values{"symbol": {string(sym)}, "metric": {"all"}}, &m); err != nil {
@@ -187,8 +195,59 @@ func (c *Client) Fundamentals(ctx context.Context, sym market.Symbol) (market.Fu
 			GrossMargin: v.GrossMargin, OperatingMargin: v.OperatingMargin, NetMargin: v.NetMargin, ROE: v.ROE,
 			CurrentRatio: v.CurrentRatio, DebtToEquity: v.DebtToEquity,
 			DividendYield: v.DividendYield, PayoutRatio: v.PayoutRatio, Beta: v.Beta,
+			PriceReturnYTD: v.ReturnYTD, PriceReturn1Y: v.Return1Y,
+			SP500ReturnYTD: benchmarkReturn(v.ReturnYTD, v.RelativeYTD), SP500Return1Y: benchmarkReturn(v.Return1Y, v.Relative1Y),
+			FiftyTwoWeekHigh: v.High, FiftyTwoWeekLow: v.Low, FiftyTwoWeekHighDate: v.HighDate, FiftyTwoWeekLowDate: v.LowDate,
 		},
 	}, nil
+}
+
+// benchmarkReturn is the S&P 500's return over the same period. Finnhub's
+// "price relative to S&P 500" is the difference in percentage points (checked
+// 2026-10-27: AAPL 33.96% - SPY 13.13% = 20.83), so the index's return is
+// the stock's minus that difference.
+func benchmarkReturn(stock, relative *float64) *float64 {
+	if stock == nil || relative == nil {
+		return nil
+	}
+	r := math.Round((*stock-*relative)*1e4) / 1e4 // Finnhub's 4 decimals, without float noise
+	return &r
+}
+
+// EarningsHistory implements market.EarningsProvider. The free plan returns
+// the last four quarters.
+func (c *Client) EarningsHistory(ctx context.Context, sym market.Symbol) ([]market.EarningsSurprise, error) {
+	var rows []struct {
+		Period          string   `json:"period"`
+		Year            int      `json:"year"`
+		Quarter         int      `json:"quarter"`
+		Actual          *float64 `json:"actual"`
+		Estimate        *float64 `json:"estimate"`
+		Surprise        *float64 `json:"surprise"`
+		SurprisePercent *float64 `json:"surprisePercent"`
+	}
+	if err := c.get(ctx, "/stock/earnings", url.Values{"symbol": {string(sym)}}, &rows); err != nil {
+		return nil, err
+	}
+	out := make([]market.EarningsSurprise, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, market.EarningsSurprise{
+			Period: r.Period, Year: r.Year, Quarter: r.Quarter, Actual: r.Actual, Estimate: r.Estimate,
+			Surprise: r.Surprise, SurprisePercent: r.SurprisePercent,
+		})
+	}
+	slices.SortFunc(out, func(a, b market.EarningsSurprise) int { return strings.Compare(b.Period, a.Period) })
+	return out, nil
+}
+
+// Recommendations implements market.FundamentalsProvider. ETFs have none.
+func (c *Client) Recommendations(ctx context.Context, sym market.Symbol) ([]market.RecommendationTrend, error) {
+	var rows []market.RecommendationTrend
+	if err := c.get(ctx, "/stock/recommendation", url.Values{"symbol": {string(sym)}}, &rows); err != nil {
+		return nil, err
+	}
+	slices.SortFunc(rows, func(a, b market.RecommendationTrend) int { return strings.Compare(b.Period, a.Period) })
+	return rows, nil
 }
 
 func (c *Client) quote(ctx context.Context, sym market.Symbol) (market.Quote, error) {

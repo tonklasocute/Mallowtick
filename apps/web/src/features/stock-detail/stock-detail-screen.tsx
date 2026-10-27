@@ -13,8 +13,10 @@ import { labelLevels } from "@/lib/levels";
 import { useCandles, useLevels, useQuote } from "@/services/api/queries";
 import type { ChartRange } from "@/types/api";
 
+import { AnalystRatings } from "./analyst-ratings";
 import { ChartPanel } from "./chart-panel";
 import { CompanyFundamentals } from "./company-fundamentals";
+import { EarningsHistory } from "./earnings-history";
 import { KeyLevels } from "./key-levels";
 import { PriceHeader } from "./price-header";
 import { QuoteStats } from "./quote-stats";
@@ -59,6 +61,8 @@ export function StockDetailScreen({ symbol }: { symbol: string }) {
         <KeyLevels range={range} query={levelsQuery} levels={levels} />
         {quote.data && <QuoteStats quote={quote.data} />}
         <CompanyFundamentals symbol={symbol} />
+        <EarningsHistory symbol={symbol} />
+        <AnalystRatings symbol={symbol} />
         <p className="px-1 text-[11px] leading-relaxed text-slate">
           ใช้เป็นข้อมูลประกอบเท่านั้น ไม่ใช่คำแนะนำการลงทุน
           ราคาและข้อมูลบริษัทมาจากผู้ให้บริการข้อมูลตลาดที่ตั้งค่าไว้ ส่วนแนวรับ-แนวต้านคำนวณโดย

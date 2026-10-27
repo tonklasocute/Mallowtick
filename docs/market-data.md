@@ -43,7 +43,12 @@ The service fills in what Finnhub quotes lack:
 
 ## Company fundamentals
 
-Checked with real keys on 2026-10-27 (AAPL, RKLB, SPY) while planning a "know the company" section for Stock Detail. In use: the profile and a subset of `/stock/metric` (`GET /stocks/{symbol}/fundamentals`, shown in the "เกี่ยวกับบริษัท" and "ตัวเลขสำคัญ" cards). It costs one Finnhub call per symbol every 6h (the profile is already cached for the name), and the same call refreshes the 52-week range. The rest of the table is not used yet.
+Checked with real keys on 2026-10-27 (AAPL, RKLB, SPY) while planning a "know the company" section for Stock Detail. In use on Stock Detail, all from Finnhub:
+
+- The profile and a subset of `/stock/metric`, including price returns against the S&P 500 (`GET /stocks/{symbol}/fundamentals`; the "เกี่ยวกับบริษัท" and "ตัวเลขสำคัญ" cards). One call per symbol every 6h (the profile is already cached for the name); the same call refreshes the 52-week range.
+- `/stock/earnings` (`GET /stocks/{symbol}/earnings/history`; "ผลประกอบการล่าสุด") and `/stock/recommendation` (`GET /stocks/{symbol}/recommendations`; "มุมมองนักวิเคราะห์"): one call each per symbol every 12h.
+
+Opening a new stock therefore costs about 3 Finnhub calls on top of the quote, well inside 60/minute. The rest of the table is not used yet.
 
 | Data | Source | Free plan |
 |---|---|---|

@@ -1,6 +1,7 @@
 import type {
   CandleSeries,
   ChartRange,
+  EarningsHistory,
   EarningsResult,
   Fundamentals,
   Health,
@@ -9,6 +10,7 @@ import type {
   MarketStatus,
   Quote,
   QuoteBatch,
+  Recommendations,
   SearchResponse,
 } from "@/types/api";
 
@@ -36,6 +38,10 @@ export const endpoints = {
     ),
   earnings: (symbol: string, signal?: Signal) =>
     apiGet<EarningsResult>(`/stocks/${enc(symbol)}/earnings`, undefined, { signal }),
+  earningsHistory: (symbol: string, signal?: Signal) =>
+    apiGet<EarningsHistory>(`/stocks/${enc(symbol)}/earnings/history`, undefined, { signal }),
+  recommendations: (symbol: string, signal?: Signal) =>
+    apiGet<Recommendations>(`/stocks/${enc(symbol)}/recommendations`, undefined, { signal }),
   fundamentals: (symbol: string, signal?: Signal) =>
     apiGet<Fundamentals>(`/stocks/${enc(symbol)}/fundamentals`, undefined, { signal }),
   levels: (symbol: string, range: ChartRange, signal?: Signal) =>

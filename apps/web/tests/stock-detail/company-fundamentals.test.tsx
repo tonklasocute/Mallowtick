@@ -1,7 +1,7 @@
 import { screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { CompanyFundamentals, formatIpoDate } from "@/features/stock-detail/company-fundamentals";
+import { CompanyFundamentals } from "@/features/stock-detail/company-fundamentals";
 import type { KeyMetrics } from "@/types/api";
 
 import { apiError, freshness, ok } from "../fixtures";
@@ -38,6 +38,14 @@ const NO_METRICS: KeyMetrics = {
   dividendYield: null,
   payoutRatioTTM: null,
   beta: null,
+  priceReturnYTD: null,
+  priceReturn1Y: null,
+  sp500ReturnYTD: null,
+  sp500Return1Y: null,
+  fiftyTwoWeekHigh: null,
+  fiftyTwoWeekLow: null,
+  fiftyTwoWeekHighDate: "",
+  fiftyTwoWeekLowDate: "",
 };
 
 // Values reported by Finnhub for RKLB on 2026-10-27.
@@ -56,15 +64,15 @@ const RKLB = {
     revenueGrowthYoY: 52.53,
     netMarginTTM: -21.51,
     beta: 3.2,
+    priceReturn1Y: -17.2566,
+    sp500Return1Y: 13.1312,
+    fiftyTwoWeekHigh: 150.9999,
+    fiftyTwoWeekHighDate: "2026-05-27",
   },
   freshness: freshness({ provider: "finnhub" }),
 };
 
 describe("CompanyFundamentals", () => {
-  it("formats the IPO date in Thai without shifting the day", () => {
-    expect(formatIpoDate("2020-11-16")).toBe("16 พ.ย. 2020");
-  });
-
   it("shows the profile and the reported metrics", async () => {
     mockFundamentals(() => ok(RKLB));
     renderWithProviders(<CompanyFundamentals symbol="RKLB" />);
@@ -84,7 +92,15 @@ describe("CompanyFundamentals", () => {
     // text-ink would override the custom colour classes, so it must not be applied too.
     expect(screen.getByText("อัตรากำไรสุทธิ").nextSibling).toHaveClass("text-down");
     expect(screen.getByText("อัตรากำไรสุทธิ").nextSibling).not.toHaveClass("text-ink");
+    // Returns carry the S&P 500's beside them; the 52-week high carries its date.
+    const year = screen.getByText("1 ปี").nextSibling;
+    expect(year).toHaveTextContent("-17.26%S&P 500 +13.13%");
+    expect(year).toHaveClass("text-down");
+    expect(screen.getByText("สูงสุด 52 สัปดาห์").nextSibling).toHaveTextContent(
+      "151.0027 พ.ค. 2026",
+    );
     // Metrics the vendor didn't report are left out rather than shown as "—".
+    expect(screen.queryByText("ตั้งแต่ต้นปี")).not.toBeInTheDocument();
     expect(screen.queryByText("อัตราปันผล")).not.toBeInTheDocument();
     expect(screen.queryByText("ฐานะการเงิน")).not.toBeInTheDocument();
     expect(screen.getByText(/ข้อมูลจาก Finnhub/)).toBeInTheDocument();
