@@ -109,3 +109,18 @@ export function formatBarTime(
     ? formatMarketDate(iso)
     : formatMarketTime(iso, now);
 }
+
+/**
+ * "16 พ.ย. 2020" (or "ต.ค. 2026" with "month") from a YYYY-MM-DD calendar date. It is
+ * not an instant, so it is formatted in UTC to keep the day as written.
+ */
+export function formatCalendarDate(date: string, unit: "day" | "month" = "day"): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  if (!date || Number.isNaN(d.getTime())) return date || EMPTY;
+  return d.toLocaleDateString("th-TH-u-ca-gregory", {
+    day: unit === "day" ? "numeric" : undefined,
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}

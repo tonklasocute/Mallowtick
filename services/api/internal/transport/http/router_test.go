@@ -80,6 +80,14 @@ func (s *stubService) Fundamentals(_ context.Context, sym market.Symbol) (market
 	s.lastSymbol = sym
 	return market.FundamentalsResult{Fundamentals: market.Fundamentals{Symbol: string(sym), Industry: "Technology"}}, s.err
 }
+func (s *stubService) EarningsHistory(_ context.Context, sym market.Symbol) (market.EarningsHistoryResult, error) {
+	s.lastSymbol = sym
+	return market.EarningsHistoryResult{Symbol: sym, Quarters: []market.EarningsSurprise{{Period: "2026-06-30"}}}, s.err
+}
+func (s *stubService) Recommendations(_ context.Context, sym market.Symbol) (market.RecommendationsResult, error) {
+	s.lastSymbol = sym
+	return market.RecommendationsResult{Symbol: sym, Trends: []market.RecommendationTrend{{Period: "2026-10-01", Buy: 16}}}, s.err
+}
 func (s *stubService) MarketStatus(context.Context) (market.StatusResult, error) {
 	return market.StatusResult{MarketStatus: market.MarketStatus{Exchange: "XNYS", IsOpen: true}}, s.err
 }
@@ -130,6 +138,8 @@ func TestSuccessfulRequests(t *testing.T) {
 		{"/api/v1/stocks/aapl/levels", `"range":"3m"`},
 		{"/api/v1/stocks/aapl/earnings", `"date":"2026-11-02"`},
 		{"/api/v1/stocks/aapl/fundamentals", `"industry":"Technology"`},
+		{"/api/v1/stocks/aapl/earnings/history", `"period":"2026-06-30"`},
+		{"/api/v1/stocks/aapl/recommendations", `"buy":16`},
 	}
 	for _, tc := range cases {
 		rec, env := do(t, svc, http.MethodGet, tc.target, nil)

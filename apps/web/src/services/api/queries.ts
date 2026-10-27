@@ -149,6 +149,28 @@ export function useFundamentals(symbol: string) {
   });
 }
 
+/** EPS against estimates for the latest quarters; the server caches them for 12h. */
+export function useEarningsHistory(symbol: string) {
+  return useQuery({
+    queryKey: ["earnings-history", symbol] as const,
+    queryFn: ({ signal }) => endpoints.earningsHistory(symbol, signal),
+    staleTime: 60 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** Monthly analyst rating counts; the server caches them for 12h. */
+export function useRecommendations(symbol: string) {
+  return useQuery({
+    queryKey: ["recommendations", symbol] as const,
+    queryFn: ({ signal }) => endpoints.recommendations(symbol, signal),
+    staleTime: 60 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
 export function useLevels(symbol: string, range: ChartRange) {
   return useQuery({
     queryKey: queryKeys.levels(symbol, range),

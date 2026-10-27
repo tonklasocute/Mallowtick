@@ -3,7 +3,6 @@
 import type { ReactNode } from "react";
 
 import { ApiErrorState } from "@/components/market/api-error-state";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StateMessage } from "@/components/ui/state-message";
@@ -11,6 +10,7 @@ import { cn } from "@/lib/cn";
 import {
   EMPTY,
   direction,
+  formatCalendarDate,
   formatCompact,
   formatMarketTime,
   formatNumber,
@@ -19,11 +19,11 @@ import {
 import { vendorLabel } from "@/lib/providers";
 import { isApiError } from "@/services/api/client";
 import { useFundamentals } from "@/services/api/queries";
-import type { Fundamentals, KeyMetrics } from "@/types/api";
+import type { Freshness, Fundamentals, KeyMetrics } from "@/types/api";
 
 interface Row {
   label: string;
-  value: string;
+  value: ReactNode;
   /** The number behind value; rows without one are left out. */
   raw: number | null;
   /** Signed values are coloured green or red by their sign. */
@@ -38,16 +38,14 @@ const money = (v: number | null) => (isNum(v) ? `$${formatCompact(v)}` : EMPTY);
 const ratio = (v: number | null) => formatNumber(v);
 const percent = (v: number | null) => (isNum(v) ? `${formatNumber(v)}%` : EMPTY);
 
-/** "16 พ.ย. 2020" from "2020-11-16". It is a calendar date, so it is formatted in UTC. */
-export function formatIpoDate(date: string): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  if (Number.isNaN(d.getTime())) return date;
-  return d.toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
+/** A value with a muted second line, e.g. the S&P 500's return under the stock's. */
+function WithNote({ value, note }: { value: string; note: string | false }) {
+  return (
+    <>
+      {value}
+      {note && <span className="block text-[11px] font-normal text-slate">{note}</span>}
+    </>
+  );
 }
 
 /** "rocketlabcorp.com" from "https://rocketlabcorp.com/". */
@@ -63,6 +61,53 @@ function metricGroups(m: KeyMetrics): { title: string; rows: Row[] }[] {
   // P/E is undefined for a loss maker; the vendor reports null, which reads as missing data.
   const loss = !isNum(m.peTTM) && isNum(m.epsTTM) && m.epsTTM < 0;
   const groups: { title: string; rows: Row[] }[] = [
+    {
+      title: "ผลตอบแทนราคา",
+      rows: [
+        {
+          label: "ตั้งแต่ต้นปี",
+          value: (
+            <WithNote
+              value={formatSignedPercent(m.priceReturnYTD)}
+              note={isNum(m.sp500ReturnYTD) && `S&P 500 ${formatSignedPercent(m.sp500ReturnYTD)}`}
+            />
+          ),
+          raw: m.priceReturnYTD,
+          tone: "signed",
+        },
+        {
+          label: "1 ปี",
+          value: (
+            <WithNote
+              value={formatSignedPercent(m.priceReturn1Y)}
+              note={isNum(m.sp500Return1Y) && `S&P 500 ${formatSignedPercent(m.sp500Return1Y)}`}
+            />
+          ),
+          raw: m.priceReturn1Y,
+          tone: "signed",
+        },
+        {
+          label: "สูงสุด 52 สัปดาห์",
+          value: (
+            <WithNote
+              value={formatNumber(m.fiftyTwoWeekHigh)}
+              note={!!m.fiftyTwoWeekHighDate && formatCalendarDate(m.fiftyTwoWeekHighDate)}
+            />
+          ),
+          raw: m.fiftyTwoWeekHigh,
+        },
+        {
+          label: "ต่ำสุด 52 สัปดาห์",
+          value: (
+            <WithNote
+              value={formatNumber(m.fiftyTwoWeekLow)}
+              note={!!m.fiftyTwoWeekLowDate && formatCalendarDate(m.fiftyTwoWeekLowDate)}
+            />
+          ),
+          raw: m.fiftyTwoWeekLow,
+        },
+      ],
+    },
     {
       title: "มูลค่าบริษัท",
       rows: [
@@ -151,7 +196,7 @@ function metricGroups(m: KeyMetrics): { title: string; rows: Row[] }[] {
 function profileRows(f: Fundamentals): { label: string; value: ReactNode }[] {
   const rows: { label: string; value: ReactNode }[] = [];
   if (f.industry) rows.push({ label: "กลุ่มอุตสาหกรรม", value: f.industry });
-  if (f.ipoDate) rows.push({ label: "เข้าตลาดเมื่อ", value: formatIpoDate(f.ipoDate) });
+  if (f.ipoDate) rows.push({ label: "เข้าตลาดเมื่อ", value: formatCalendarDate(f.ipoDate) });
   if (isNum(f.sharesOutstanding)) {
     rows.push({
       label: "จำนวนหุ้น",
@@ -205,6 +250,23 @@ function valueClass(row: Row): string | undefined {
   return dir === "up" ? "text-up" : dir === "down" ? "text-down" : row.className;
 }
 
+/** "ข้อมูลจาก Finnhub · อัปเดต …", shared by the vendor-sourced cards. */
+export function SourceNote({
+  freshness,
+  children,
+}: {
+  freshness: Freshness;
+  children?: ReactNode;
+}) {
+  return (
+    <p className="mt-3 text-[11px] leading-relaxed text-slate">
+      {children && <>{children} · </>}
+      ข้อมูลจาก {vendorLabel(freshness.provider)} · อัปเดต {formatMarketTime(freshness.fetchedAt)}
+      {freshness.stale && " (ข้อมูลเก่า ผู้ให้บริการไม่ตอบสนอง)"}
+    </p>
+  );
+}
+
 /**
  * What the company does and how the market values it, from the vendor's profile and
  * ratios. Hidden rows mean the vendor did not report them (ETFs have almost none).
@@ -244,11 +306,7 @@ export function CompanyFundamentals({ symbol }: { symbol: string }) {
   const profile = profileRows(data);
   const groups = metricGroups(data.metrics);
   const source = (
-    <p className="mt-3 text-[11px] leading-relaxed text-slate">
-      ข้อมูลจาก {vendorLabel(data.freshness.provider)} · อัปเดต{" "}
-      {formatMarketTime(data.freshness.fetchedAt)}
-      {data.freshness.stale && " (ข้อมูลเก่า ผู้ให้บริการไม่ตอบสนอง)"}
-    </p>
+    <SourceNote freshness={data.freshness}>อัตราส่วนคิดจาก 12 เดือนล่าสุด (TTM)</SourceNote>
   );
 
   if (profile.length === 0 && groups.length === 0) {
@@ -274,10 +332,7 @@ export function CompanyFundamentals({ symbol }: { symbol: string }) {
       )}
       {groups.length > 0 && (
         <Card>
-          <div className="mb-2 flex items-center justify-between">
-            <CardTitle>ตัวเลขสำคัญ</CardTitle>
-            <Badge tone="sky">ย้อนหลัง 12 เดือน</Badge>
-          </div>
+          <CardTitle className="mb-2">ตัวเลขสำคัญ</CardTitle>
           <div className="space-y-4">
             {groups.map((g) => (
               <div key={g.title}>

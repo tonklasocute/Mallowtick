@@ -138,11 +138,31 @@ Company profile and key ratios from a vendor that publishes them (Finnhub: `/sto
   "metrics": { "marketCap": 32209104000, "enterpriseValue": 30108932000, "peTTM": null, "psTTM": 41.8764, "pb": 17.4119,
     "epsTTM": -0.2795, "revenueGrowthYoY": 52.53, "revenueGrowth5Y": 76.47, "epsGrowthYoY": null,
     "grossMarginTTM": 37.26, "operatingMarginTTM": -29.82, "netMarginTTM": -21.51, "roeTTM": -7.56,
-    "currentRatio": 5.4824, "debtToEquity": 0.0084, "dividendYield": null, "payoutRatioTTM": null, "beta": 3.2037 },
+    "currentRatio": 5.4824, "debtToEquity": 0.0084, "dividendYield": null, "payoutRatioTTM": null, "beta": 3.2037,
+    "priceReturnYTD": -24.5986, "priceReturn1Y": -17.2566, "sp500ReturnYTD": 11.4456, "sp500Return1Y": 13.1312,
+    "fiftyTwoWeekHigh": 150.9999, "fiftyTwoWeekLow": 37.57, "fiftyTwoWeekHighDate": "2026-05-27", "fiftyTwoWeekLowDate": "2025-11-21" },
   "freshness": { "provider": "finnhub", … } } }
 ```
 
-Money is in the listing currency (the vendor's millions are converted to units). Percentages are in percent units (`52.53` means 52.53%). `TTM` is the trailing twelve months. Values the vendor doesn't report are `null`: `peTTM` is `null` for loss makers, and ETFs have no profile and only `beta`.
+Money is in the listing currency (the vendor's millions are converted to units). Percentages are in percent units (`52.53` means 52.53%). `TTM` is the trailing twelve months. Values the vendor doesn't report are `null`: `peTTM` is `null` for loss makers, and ETFs have no profile and only `beta`, the price returns and the 52-week range. `sp500Return*` is derived: Finnhub reports the stock's return minus the S&P 500's, in percentage points.
+
+### `GET /stocks/{symbol}/earnings/history`
+
+Reported EPS against the analysts' consensus for the latest quarters, newest first (Finnhub `/stock/earnings`: four quarters on the free plan). `year` and `quarter` are fiscal; `period` is the quarter's end date. `surprisePercent` is the surprise as a share of the estimate's size, so a smaller loss than expected is positive. `quarters` is empty for ETFs. Fails with `provider_not_configured` like `/earnings`. Cached for 12h.
+
+```json
+{ "data": { "symbol": "RKLB", "quarters": [{ "period": "2026-06-30", "year": 2026, "quarter": 2, "actual": -0.08,
+  "estimate": -0.0765, "surprise": -0.0035, "surprisePercent": -4.5752 }], "freshness": { "provider": "finnhub", … } } }
+```
+
+### `GET /stocks/{symbol}/recommendations`
+
+Analyst rating counts per month, newest first (Finnhub `/stock/recommendation`). `period` is the first day of the month. `trends` is empty when no analyst covers the symbol (ETFs). Fails with `provider_not_configured` like `/fundamentals`. Cached for 12h.
+
+```json
+{ "data": { "symbol": "RKLB", "trends": [{ "period": "2026-10-01", "strongBuy": 7, "buy": 16, "hold": 5, "sell": 0,
+  "strongSell": 0 }], "freshness": { "provider": "finnhub", … } } }
+```
 
 ### `GET /stocks/{symbol}/candles?range=1d&warmup=true`
 

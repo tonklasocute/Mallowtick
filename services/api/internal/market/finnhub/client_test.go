@@ -3,6 +3,7 @@ package finnhub
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -133,7 +134,8 @@ func TestFundamentalsMapProfileAndMetrics(t *testing.T) {
 			metrics.Add(1)
 			_, _ = w.Write([]byte(`{"metric":{"52WeekHigh":150.9999,"52WeekLow":37.57,"marketCapitalization":32209.104,` +
 				`"peTTM":null,"psTTM":41.8764,"epsTTM":-0.2795,"revenueGrowthTTMYoy":52.53,"netProfitMarginTTM":-21.51,` +
-				`"totalDebt/totalEquityQuarterly":0.0084,"beta":3.2}}`))
+				`"totalDebt/totalEquityQuarterly":0.0084,"beta":3.2,"52WeekHighDate":"2026-05-27",` +
+				`"52WeekPriceReturnDaily":-17.2566,"priceRelativeToS&P50052Week":-30.3878,"yearToDatePriceReturnDaily":-24.5986}}`))
 		},
 	}, 60)
 	ctx := context.Background()
@@ -150,10 +152,36 @@ func TestFundamentalsMapProfileAndMetrics(t *testing.T) {
 		*m.RevenueGrowthYoY != 52.53 || *m.NetMargin != -21.51 || *m.DebtToEquity != 0.0084 || m.DividendYield != nil {
 		t.Fatalf("metrics not mapped (market cap in units, missing values nil): %+v", m)
 	}
+	// The relative return is in percentage points, so the S&P 500 made -17.2566 - -30.3878.
+	if m.SP500Return1Y == nil || math.Abs(*m.SP500Return1Y-13.1312) > 1e-9 || *m.PriceReturnYTD != -24.5986 ||
+		m.SP500ReturnYTD != nil || *m.FiftyTwoWeekHigh != 150.9999 || m.FiftyTwoWeekHighDate != "2026-05-27" {
+		t.Fatalf("returns not mapped: %+v", m)
+	}
 
 	r, err := c.FiftyTwoWeek(ctx, "RKLB")
 	if err != nil || r == nil || r.High != 150.9999 || metrics.Load() != 1 {
 		t.Fatalf("the 52-week range should be reused from the same call: %+v %v, calls = %d", r, err, metrics.Load())
+	}
+}
+
+func TestEarningsHistoryAndRecommendationsAreNewestFirst(t *testing.T) {
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/stock/earnings": respond(`[` +
+			`{"actual":-0.09,"estimate":-0.0942,"period":"2025-12-31","quarter":4,"surprise":0.0042,"surprisePercent":4.4586,"year":2025},` +
+			`{"actual":-0.08,"estimate":-0.0765,"period":"2026-06-30","quarter":2,"surprise":-0.0035,"surprisePercent":-4.5752,"year":2026}]`),
+		"/stock/recommendation": respond(`[` +
+			`{"period":"2026-09-01","strongBuy":7,"buy":14,"hold":5,"sell":0,"strongSell":0,"symbol":"RKLB"},` +
+			`{"period":"2026-10-01","strongBuy":7,"buy":16,"hold":5,"sell":0,"strongSell":0,"symbol":"RKLB"}]`),
+	}, 60)
+	ctx := context.Background()
+	h, err := c.EarningsHistory(ctx, "RKLB")
+	if err != nil || len(h) != 2 || h[0].Period != "2026-06-30" || h[0].Quarter != 2 || *h[0].Actual != -0.08 ||
+		*h[0].SurprisePercent != -4.5752 {
+		t.Fatalf("earnings history: %+v %v", h, err)
+	}
+	r, err := c.Recommendations(ctx, "RKLB")
+	if err != nil || len(r) != 2 || r[0].Period != "2026-10-01" || r[0].Buy != 16 || r[0].StrongBuy != 7 {
+		t.Fatalf("recommendations: %+v %v", r, err)
 	}
 }
 

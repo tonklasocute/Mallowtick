@@ -4,6 +4,7 @@ import {
   direction,
   formatBarTime,
   EMPTY,
+  formatCalendarDate,
   formatCompact,
   formatDuration,
   formatMarketTime,
@@ -13,6 +14,12 @@ import {
 } from "@/lib/format";
 
 describe("format", () => {
+  it("formats calendar dates in Thai without shifting the day", () => {
+    expect(formatCalendarDate("2020-11-16")).toBe("16 พ.ย. 2020");
+    expect(formatCalendarDate("2026-10-01", "month")).toBe("ต.ค. 2026");
+    expect(formatCalendarDate("")).toBe(EMPTY);
+  });
+
   it("formats prices with currency and sensible precision", () => {
     expect(formatPrice(189.32)).toBe("$189.32");
     expect(formatPrice(1234.5)).toBe("$1,234.50");
