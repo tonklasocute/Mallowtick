@@ -243,6 +243,7 @@ func TestProviderRateLimitStopsFurtherCalls(t *testing.T) {
 
 func TestSearchKeepsValidUSSymbols(t *testing.T) {
 	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/stock/profile2": respond(`{}`),
 		"/search": respond(`{"count":3,"result":[` +
 			`{"description":"Apple Inc.","symbol":"AAPL","type":"Common Stock"},` +
 			`{"description":"Apple Inc.","symbol":"AAPL","type":"Common Stock"},` +
@@ -255,6 +256,73 @@ func TestSearchKeepsValidUSSymbols(t *testing.T) {
 	}
 	if len(got) != 2 || got[0].Symbol != "AAPL" || got[1].Symbol != "APLE" || got[0].Exchange != "" {
 		t.Fatalf("want AAPL and APLE once each, without an exchange: %+v", got)
+	}
+}
+
+const aaplLogo = "https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png"
+
+func TestQuoteCarriesTheProfileLogo(t *testing.T) {
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/quote":          respond(aaplQuote),
+		"/stock/profile2": respond(`{"name":"Apple Inc","exchange":"NASDAQ NMS - GLOBAL MARKET","logo":"` + aaplLogo + `"}`),
+	}, 60)
+	got, err := c.Quotes(context.Background(), []market.Symbol{"AAPL"})
+	if err != nil || got["AAPL"].Logo != aaplLogo {
+		t.Fatalf("the quote should carry the profile's logo: %+v %v", got["AAPL"], err)
+	}
+}
+
+func TestCleanLogoKeepsOnlyHTTPS(t *testing.T) {
+	for in, want := range map[string]string{
+		aaplLogo:                          aaplLogo,
+		"  " + aaplLogo + " ":             aaplLogo,
+		"":                                "",
+		"http://static2.finnhub.io/a.png": "",
+		"javascript:alert(1)":             "",
+		"//static2.finnhub.io/a.png":      "",
+		"not a url":                       "",
+	} {
+		if got := cleanLogo(in); got != want {
+			t.Errorf("cleanLogo(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSearchResultsGetLogosAndProfilesAreFetchedOnce(t *testing.T) {
+	var profiles atomic.Int32
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/search": respond(`{"result":[` +
+			`{"description":"Apple Inc.","symbol":"AAPL","type":"Common Stock"},` +
+			`{"description":"SS SPDR S&P 500 ETF TRUST-US","symbol":"SPY","type":"ETP"}]}`),
+		"/stock/profile2": func(w http.ResponseWriter, r *http.Request) {
+			profiles.Add(1)
+			if r.URL.Query().Get("symbol") == "AAPL" {
+				_, _ = w.Write([]byte(`{"name":"Apple Inc","logo":"` + aaplLogo + `"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{}`)) // ETFs have no profile
+		},
+	}, 60)
+	ctx := context.Background()
+	for range 2 {
+		got, err := c.SearchSymbols(ctx, "apple", 10)
+		if err != nil || len(got) != 2 || got[0].Logo != aaplLogo || got[1].Logo != "" {
+			t.Fatalf("AAPL should have a logo and the ETF none: %+v %v", got, err)
+		}
+	}
+	if profiles.Load() != 2 {
+		t.Fatalf("each profile should be fetched once, ETF included; calls = %d", profiles.Load())
+	}
+}
+
+func TestSearchStillAnswersWhenLogosCannotBeFetched(t *testing.T) {
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/search":         respond(`{"result":[{"description":"Apple Inc.","symbol":"AAPL","type":"Common Stock"}]}`),
+		"/stock/profile2": status(http.StatusServiceUnavailable, `{"error":"down"}`),
+	}, 60)
+	got, err := c.SearchSymbols(context.Background(), "apple", 10)
+	if err != nil || len(got) != 1 || got[0].Symbol != "AAPL" || got[0].Logo != "" {
+		t.Fatalf("a failed profile call must only cost the logo: %+v %v", got, err)
 	}
 }
 

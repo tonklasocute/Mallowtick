@@ -48,11 +48,13 @@ Checked with real keys on 2026-10-27 (AAPL, RKLB, SPY) while planning a "know th
 - The profile and a subset of `/stock/metric`, including price returns against the S&P 500 (`GET /stocks/{symbol}/fundamentals`; the "เกี่ยวกับบริษัท" and "ตัวเลขสำคัญ" cards). One call per symbol every 6h (the profile is already cached for the name); the same call refreshes the 52-week range.
 - `/stock/earnings` (`GET /stocks/{symbol}/earnings/history`; "ผลประกอบการล่าสุด") and `/stock/recommendation` (`GET /stocks/{symbol}/recommendations`; "มุมมองนักวิเคราะห์"): one call each per symbol every 12h.
 
+- Company logos: the `logo` URL of the same profile (`static2.finnhub.io/.../stock_logo/<ticker or id>.png`, a 1000×1000 PNG of 50–100 KB that answers 302 to another `static*` host and is cached upstream for 3 hours; checked 2026-10-27). Quotes carry it for free. Search results get logos with up to one extra `/stock/profile2` call per new symbol (cached 24h, 2-second limit), so a first search can cost up to 10 Finnhub calls. The browser loads them through `next/image` (see CLAUDE.md), never from Finnhub directly. Finnhub's terms for displaying logos have not been checked; like the market data itself, serving the app publicly may need a commercial licence.
+
 Opening a new stock therefore costs about 3 Finnhub calls on top of the quote, well inside 60/minute. The rest of the table is not used yet.
 
 | Data | Source | Free plan |
 |---|---|---|
-| Industry, IPO date, market cap (USD millions), shares outstanding, logo, website | Finnhub `/stock/profile2` (already called for the name) | ✅ Stocks only; `{}` for ETFs |
+| Industry, IPO date, market cap (USD millions), shares outstanding, logo, website | Finnhub `/stock/profile2` (already called for the name) | ✅ Stocks only; `{}` for ETFs. Some small caps have an empty `logo` (BZRT, RCTY). |
 | ~130 ratios: P/E, P/S, P/B, EV, margins, ROE/ROA, revenue and EPS growth (YoY, 3Y, 5Y), current ratio, debt/equity, beta, dividend yield, payout, returns vs S&P 500 | Finnhub `/stock/metric?metric=all` (already called for the 52-week range) | ✅ Plus `series.annual`/`series.quarterly` history of ratios and per-share values (no absolute revenue or income). Loss makers have `peTTM: null` and a negative `epsTTM`. ETFs get only price returns, 52-week range and beta. |
 | EPS actual vs estimate | Finnhub `/stock/earnings` | ✅ Last 4 quarters only (`limit=12` still returns 4) |
 | Analyst buy/hold/sell counts per month | Finnhub `/stock/recommendation` | ✅ |
@@ -87,7 +89,7 @@ Opening a new stock therefore costs about 3 Finnhub calls on top of the quote, w
 | Candles | `/time_series?order=asc` | 1/request |
 | Market status | `/market_state?code=XNYS` | 1/request |
 
-Not used in V1: WebSocket streaming (Basic/Grow plans only allow trial symbols), company logos, news, US index symbols (SPX/IXIC/DJI). The Discover benchmarks default to the ETFs SPY/QQQ/DIA, and the UI shows the provider's instrument name (e.g. "SPDR S&P 500 ETF Trust"), never an index level.
+Not used in V1: WebSocket streaming (Basic/Grow plans only allow trial symbols), news, US index symbols (SPX/IXIC/DJI). The Discover benchmarks default to the ETFs SPY/QQQ/DIA, and the UI shows the provider's instrument name (e.g. "SPDR S&P 500 ETF Trust"), never an index level.
 
 The API key is sent in the `Authorization: apikey …` header, never in URLs or logs, and never reaches the browser.
 

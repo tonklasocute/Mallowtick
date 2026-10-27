@@ -35,6 +35,7 @@ type instrumentInfo struct {
 	Country  string
 	IPODate  string
 	Website  string
+	Logo     string
 	// Shares is the share count in units, nil when unknown.
 	Shares *float64
 }
@@ -74,6 +75,55 @@ func cleanName(s string) string {
 	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s), "-US"))
 }
 
+// logoWait bounds how long a search waits for logos. They are decoration: past
+// this, or when the call budget is spent, results go out without them.
+const logoWait = 2 * time.Second
+
+// cleanLogo keeps only an https URL; anything else is treated as no logo, so the
+// API never hands the browser a URL it should not load.
+func cleanLogo(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return ""
+	}
+	return u.String()
+}
+
+// logoFor returns the logo URL for symbol from the caches, or from one
+// /stock/profile2 call. Failures give "" and are not cached.
+func (c *Client) logoFor(ctx context.Context, sym market.Symbol) string {
+	if e, state := c.logos.Get(string(sym)); state == cache.Fresh {
+		return e.Value
+	}
+	if e, state := c.info.Get(string(sym)); state == cache.Fresh {
+		return e.Value.Logo
+	}
+	var p struct {
+		Logo string `json:"logo"`
+	}
+	if err := c.get(ctx, "/stock/profile2", url.Values{"symbol": {string(sym)}}, &p); err != nil {
+		return ""
+	}
+	logo := cleanLogo(p.Logo)
+	c.logos.Set(string(sym), logo)
+	return logo
+}
+
+// attachLogos fills in found[i].Logo, a few calls at a time, within logoWait.
+func (c *Client) attachLogos(ctx context.Context, found []market.Instrument) {
+	lctx, cancel := context.WithTimeout(ctx, logoWait)
+	defer cancel()
+	var g errgroup.Group
+	g.SetLimit(parallelCalls)
+	for i := range found {
+		g.Go(func() error {
+			found[i].Logo = c.logoFor(lctx, market.Symbol(found[i].Symbol))
+			return nil
+		})
+	}
+	_ = g.Wait()
+}
+
 // instrument returns cached name, exchange and currency for symbol. ETFs have
 // no company profile, so their name comes from an exact search match.
 func (c *Client) instrument(ctx context.Context, sym market.Symbol) (instrumentInfo, error) {
@@ -88,6 +138,7 @@ func (c *Client) instrument(ctx context.Context, sym market.Symbol) (instrumentI
 		Country  string   `json:"country"`
 		IPO      string   `json:"ipo"`
 		Website  string   `json:"weburl"`
+		Logo     string   `json:"logo"`
 		Shares   *float64 `json:"shareOutstanding"`
 	}
 	if err := c.get(ctx, "/stock/profile2", url.Values{"symbol": {string(sym)}}, &p); err != nil {
@@ -95,7 +146,8 @@ func (c *Client) instrument(ctx context.Context, sym market.Symbol) (instrumentI
 	}
 	info := instrumentInfo{
 		Name: p.Name, Exchange: shortExchange(p.Exchange), Currency: p.Currency,
-		Industry: p.Industry, Country: p.Country, IPODate: p.IPO, Website: p.Website, Shares: scaled(p.Shares, millions),
+		Industry: p.Industry, Country: p.Country, IPODate: p.IPO, Website: p.Website,
+		Logo: cleanLogo(p.Logo), Shares: scaled(p.Shares, millions),
 	}
 	if info.Name == "" {
 		matches, err := c.search(ctx, string(sym))
@@ -113,6 +165,7 @@ func (c *Client) instrument(ctx context.Context, sym market.Symbol) (instrumentI
 		info.Currency = "USD" // only US-listed instruments are supported
 	}
 	c.info.Set(string(sym), info)
+	c.logos.Set(string(sym), info.Logo)
 	return info, nil
 }
 
@@ -286,7 +339,7 @@ func (c *Client) quote(ctx context.Context, sym market.Symbol) (market.Quote, er
 	// Names and ranges are extras: a quote is still useful without them, and a
 	// later refresh fills them in once there is room in the budget.
 	if info, err := c.instrument(ctx, sym); err == nil {
-		q.Name, q.Exchange, q.Currency = info.Name, info.Exchange, info.Currency
+		q.Name, q.Exchange, q.Currency, q.Logo = info.Name, info.Exchange, info.Currency, info.Logo
 	} else {
 		q.Currency = "USD"
 		c.log.DebugContext(ctx, "finnhub profile unavailable", slog.String("symbol", string(sym)), slog.Any("error", err))
@@ -366,7 +419,9 @@ func (c *Client) SearchSymbols(ctx context.Context, query string, limit int) ([]
 	if err != nil {
 		return nil, err
 	}
-	return all[:min(limit, len(all))], nil
+	found := all[:min(limit, len(all))]
+	c.attachLogos(ctx, found)
+	return found, nil
 }
 
 // Candles implements market.Provider. Historical candles are not on the free

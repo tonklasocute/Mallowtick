@@ -25,7 +25,7 @@ export function QuoteRow({ quote, receivedAt, avatarShape, middle, trailing }: Q
         href={`/stocks/${encodeURIComponent(quote.symbol)}`}
         className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl px-1 py-2.5 transition hover:bg-cream"
       >
-        <SymbolAvatar symbol={quote.symbol} shape={avatarShape} />
+        <SymbolAvatar symbol={quote.symbol} logo={quote.logo} shape={avatarShape} />
         <span className="min-w-0 flex-1">
           <span className="block font-display text-[15px] font-semibold text-ink">
             {quote.symbol}

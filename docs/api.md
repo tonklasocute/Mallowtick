@@ -89,8 +89,11 @@ Quotes for `MARKET_OVERVIEW_SYMBOLS` (`benchmarks`) and `POPULAR_SYMBOLS` (`popu
 US instruments matching a ticker or company name (up to 10).
 
 ```json
-{ "data": { "query": "apple", "results": [{ "symbol": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ", "micCode": "XNGS", "currency": "USD", "type": "Common Stock", "country": "United States" }] } }
+{ "data": { "query": "apple", "results": [{ "symbol": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ", "micCode": "XNGS", "currency": "USD", "type": "Common Stock", "country": "United States",
+  "logo": "https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png" }] } }
 ```
+
+`logo` is an https URL, left out when the vendor has none (ETFs, symbols Finnhub has no logo for, and Twelve Data alone). With Finnhub the API looks logos up for the results (one `/stock/profile2` call per symbol, cached 24h, within 2 seconds); a failure only costs the logos, never the search.
 
 ### `GET /stocks/quotes?symbols=AAPL,MSFT`
 
@@ -106,6 +109,7 @@ Instrument metadata (same shape as a search result). Cached for 24h.
 {
   "data": {
     "symbol": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ", "currency": "USD",
+    "logo": "https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png",
     "price": 347.73, "open": 349.12, "high": 351.73, "low": 345.75, "previousClose": 348.22,
     "change": -0.49, "changePercent": -0.1407, "volume": 39496500,
     "fiftyTwoWeek": { "low": 243.42, "high": 351.73 }, "isMarketOpen": false,
@@ -115,7 +119,7 @@ Instrument metadata (same shape as a search result). Cached for 24h.
 }
 ```
 
-Fields the provider didn't report are `null`. With Finnhub quotes, `exchange` is empty for ETFs, `volume` is filled in only after the close (from the session's daily bar), and `fiftyTwoWeek` is looked up for this single-symbol endpoint only (batch quotes leave it `null`).
+Fields the provider didn't report are `null`; `logo` is `""` when there is none, and comes from the profile already fetched for the name. With Finnhub quotes, `exchange` is empty for ETFs, `volume` is filled in only after the close (from the session's daily bar), and `fiftyTwoWeek` is looked up for this single-symbol endpoint only (batch quotes leave it `null`).
 
 ### `GET /stocks/{symbol}/earnings`
 

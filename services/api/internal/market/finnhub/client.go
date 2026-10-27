@@ -59,6 +59,9 @@ type Client struct {
 
 	info   *cache.TTL[instrumentInfo]
 	ranges *cache.TTL[market.Range52]
+	// logos holds the logo URL per symbol, including "" for symbols without one,
+	// so search results can show logos without fetching whole profiles twice.
+	logos *cache.TTL[string]
 }
 
 var (
@@ -99,6 +102,7 @@ func New(cfg Config) (*Client, error) {
 		now:     cfg.Now,
 		info:    cache.New[instrumentInfo](infoTTL, infoTTL, 5000, cfg.Now),
 		ranges:  cache.New[market.Range52](infoTTL, infoTTL, 5000, cfg.Now),
+		logos:   cache.New[string](infoTTL, infoTTL, 5000, cfg.Now),
 	}, nil
 }
 
