@@ -198,16 +198,47 @@ function ReturnCompare({
   );
 }
 
+/**
+ * Growth over a thousand percent is shown without decimals ("+2,257%"): the cents of a
+ * four-digit percentage mean nothing and would not fit the tile.
+ */
+function formatGrowth(value: number): string {
+  if (Math.abs(value) < 1000) return formatSignedPercent(value);
+  const rounded = new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 0,
+    signDisplay: "exceptZero",
+  }).format(value);
+  return `${rounded}%`;
+}
+
+/** The tile is about 130px wide on a phone; longer numbers step down so they stay on one line. */
+function growthSize(text: string): string {
+  if (text.length <= 7) return "text-2xl";
+  return text.length <= 9 ? "text-xl" : "text-lg";
+}
+
 function GrowthTile({ label, value }: { label: string; value: number }) {
   const up = value >= 0;
+  const text = formatGrowth(value);
   return (
     <div
-      className={cn("flex flex-col gap-1 rounded-2xl p-3", up ? "bg-mint-soft" : "bg-accent-soft")}
+      className={cn(
+        "flex min-w-0 flex-col gap-1 rounded-2xl p-3",
+        up ? "bg-mint-soft" : "bg-accent-soft",
+      )}
     >
       <dt className="text-[11.5px] text-slate">{label}</dt>
-      <dd className={cn("tabular font-display text-2xl font-black", up ? "text-up" : "text-down")}>
-        <span aria-hidden>{up ? "▲" : "▼"} </span>
-        {formatSignedPercent(value)}
+      <dd
+        className={cn(
+          "tabular flex items-baseline gap-1 font-display font-black whitespace-nowrap",
+          growthSize(text),
+          up ? "text-up" : "text-down",
+        )}
+      >
+        <span aria-hidden className="text-[0.7em]">
+          {up ? "▲" : "▼"}
+        </span>
+        {text}
       </dd>
     </div>
   );
