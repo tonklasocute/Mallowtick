@@ -67,6 +67,9 @@ type Service struct {
 	surprises    *cache.TTL[[]EarningsSurprise]
 	fundamentals *cache.TTL[Fundamentals]
 	ratings      *cache.TTL[[]RecommendationTrend]
+	// dayChanges and returns hold the sectors' name-free quotes and returns.
+	dayChanges *cache.TTL[Quote]
+	returns    *cache.TTL[PriceReturns]
 }
 
 // NewService wires a provider with caches.
@@ -91,6 +94,8 @@ func NewService(p Provider, cfg ServiceConfig) *Service {
 		surprises:    cache.New[[]EarningsSurprise](earningsTTL, retain, 1000, cfg.Now),
 		fundamentals: cache.New[Fundamentals](fundamentalsTTL, retain, 1000, cfg.Now),
 		ratings:      cache.New[[]RecommendationTrend](ratingsTTL, retain, 1000, cfg.Now),
+		dayChanges:   cache.New[Quote](cfg.QuoteTTL, retain, 100, cfg.Now),
+		returns:      cache.New[PriceReturns](fundamentalsTTL, retain, 100, cfg.Now),
 	}
 }
 
@@ -358,11 +363,18 @@ type quoteFetch struct {
 // resolveQuotes resolves each symbol from cache or one provider request for all
 // misses. It returns per-symbol errors for symbols it could not resolve.
 func (s *Service) resolveQuotes(ctx context.Context, symbols []Symbol) ([]QuoteResult, map[Symbol]error) {
+	return s.resolveQuotesFrom(ctx, symbols, s.quotes, "quotes:", s.provider.Quotes)
+}
+
+// resolveQuotesFrom is resolveQuotes over another cache and fetch, e.g. quotes
+// without names, which must not land in the main quote cache.
+func (s *Service) resolveQuotesFrom(ctx context.Context, symbols []Symbol, quotes *cache.TTL[Quote], keyPrefix string,
+	fetch func(context.Context, []Symbol) (map[Symbol]Quote, error)) ([]QuoteResult, map[Symbol]error) {
 	results := make(map[Symbol]QuoteResult, len(symbols))
 	staleEntries := make(map[Symbol]cache.Entry[Quote])
 	var misses []Symbol
 	for _, sym := range symbols {
-		e, st := s.quotes.Get(string(sym))
+		e, st := quotes.Get(string(sym))
 		switch st {
 		case cache.Fresh:
 			results[sym] = QuoteResult{Quote: e.Value, Freshness: s.freshness(KindQuotes, e.Value.AsOf, e.StoredAt, false)}
@@ -379,8 +391,8 @@ func (s *Service) resolveQuotes(ctx context.Context, symbols []Symbol) ([]QuoteR
 		for i, m := range misses {
 			keys[i] = string(m)
 		}
-		v, fetchErr := s.do(ctx, "quotes:"+strings.Join(keys, ","), func(fctx context.Context) (any, error) {
-			got, err := s.provider.Quotes(fctx, misses)
+		v, fetchErr := s.do(ctx, keyPrefix+strings.Join(keys, ","), func(fctx context.Context) (any, error) {
+			got, err := fetch(fctx, misses)
 			if err != nil && len(got) == 0 {
 				return nil, err
 			}
@@ -391,7 +403,7 @@ func (s *Service) resolveQuotes(ctx context.Context, symbols []Symbol) ([]QuoteR
 					// already cached (never fetched for this) so labels and TTLs know.
 					q.IsMarketOpen = s.cachedMarketOpen()
 				}
-				f.stored[sym] = s.quotes.SetWithTTL(string(sym), q, s.quoteTTL(q))
+				f.stored[sym] = quotes.SetWithTTL(string(sym), q, s.quoteTTL(q))
 			}
 			return f, nil
 		})

@@ -24,6 +24,7 @@ type MarketService interface {
 	Levels(ctx context.Context, symbol market.Symbol, rng market.Range) (market.LevelsResult, error)
 	MarketStatus(ctx context.Context) (market.StatusResult, error)
 	Overview(ctx context.Context) (market.Overview, error)
+	Sectors(ctx context.Context) (market.SectorsResult, error)
 	NextEarnings(ctx context.Context, symbol market.Symbol) (market.EarningsResult, error)
 	EarningsHistory(ctx context.Context, symbol market.Symbol) (market.EarningsHistoryResult, error)
 	Fundamentals(ctx context.Context, symbol market.Symbol) (market.FundamentalsResult, error)
@@ -65,6 +66,7 @@ func NewRouter(opts Options) http.Handler {
 	v1.GET("/health", h.health)
 	v1.GET("/market/status", h.marketStatus)
 	v1.GET("/market/overview", h.overview)
+	v1.GET("/market/sectors", h.sectors)
 	v1.GET("/stocks/search", h.search)
 	v1.GET("/stocks/quotes", h.quotes)
 	v1.GET("/stocks/:symbol", h.instrument)
@@ -98,6 +100,15 @@ func (h *handlers) overview(c *gin.Context) {
 		return
 	}
 	ok(c, ov)
+}
+
+func (h *handlers) sectors(c *gin.Context) {
+	res, err := h.svc.Sectors(c.Request.Context())
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	ok(c, res)
 }
 
 func (h *handlers) search(c *gin.Context) {

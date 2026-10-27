@@ -84,6 +84,20 @@ Quotes for `MARKET_OVERVIEW_SYMBOLS` (`benchmarks`) and `POPULAR_SYMBOLS` (`popu
 { "data": { "benchmarks": [Quote…], "popular": [Quote…], "unavailable": [{ "symbol": "DIA", "reason": "rate_limited", "group": "benchmark" }] } }
 ```
 
+### `GET /market/sectors`
+
+The eleven S&P 500 sectors, through their SPDR Select Sector ETFs (XLE, XLB, XLI, XLY, XLP, XLV, XLF, XLK, XLC, XLU, XLRE), with SPY as `benchmark`. `sectors` is in that order, and `sector` is a stable English key (`technology`, `health-care`, …) that clients name in their language. Returns are price returns in percent: `1d` is the quote's change for the latest session, and `1w` (5 sessions), `3m` (13 weeks), `ytd` and `1y` (52 weeks) are Finnhub's daily-close returns from `/stock/metric`. There is no one-month return: Finnhub reports only month-to-date. Values the vendor didn't report are `null`. `unavailable` lists every symbol missing its quote, its returns or both, with the reason; only a symbol with neither is left out of `sectors`, so a `rate_limited` entry for a listed sector means its other half is still to come. `freshness.asOf` is the latest quote time and `fetchedAt` the oldest fetch behind the response.
+
+These are returns, not fund flows: no free source here reports money moving in or out of a sector.
+
+Needs a vendor that reports performance on its own (Finnhub) and fails with `provider_not_configured` without one, so it never spends Twelve Data credits. It fetches quotes and returns without the name and profile lookups the other endpoints make (one `/quote` and one `/stock/metric` call per ETF), and keeps them in caches of its own, so other endpoints still get names. A fresh SPY quote from the overview is reused. Quotes are cached for `QUOTE_CACHE_TTL`, returns for 6h.
+
+```json
+{ "data": { "benchmark": { "symbol": "SPY", "returns": { "1d": 0.71, "1w": -0.8493, "3m": 2.8474, "ytd": 11.4456, "1y": 13.1312 } },
+  "sectors": [{ "sector": "energy", "symbol": "XLE", "returns": { "1d": 0.4, "1w": 2.2566, "3m": 16.2865, "ytd": 55.066, "1y": 55.8678 } }, …],
+  "unavailable": [], "freshness": { "provider": "finnhub", … } } }
+```
+
 ### `GET /stocks/search?q=apple`
 
 US instruments matching a ticker or company name (up to 10).

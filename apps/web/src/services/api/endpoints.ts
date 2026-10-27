@@ -12,6 +12,7 @@ import type {
   QuoteBatch,
   Recommendations,
   SearchResponse,
+  SectorsResult,
 } from "@/types/api";
 
 import { apiGet } from "./client";
@@ -24,6 +25,7 @@ export const endpoints = {
   health: (signal?: Signal) => apiGet<Health>("/health", undefined, { signal }),
   marketStatus: (signal?: Signal) => apiGet<MarketStatus>("/market/status", undefined, { signal }),
   overview: (signal?: Signal) => apiGet<MarketOverview>("/market/overview", undefined, { signal }),
+  sectors: (signal?: Signal) => apiGet<SectorsResult>("/market/sectors", undefined, { signal }),
   search: (q: string, signal?: Signal) =>
     apiGet<SearchResponse>("/stocks/search", { q }, { signal }),
   quote: (symbol: string, signal?: Signal) =>

@@ -160,12 +160,14 @@ export function NoteBox({ children, icon = false }: { children: ReactNode; icon?
 export function SourceNote({
   freshness,
   children,
+  icon,
 }: {
   freshness: Freshness;
   children?: ReactNode;
+  icon?: boolean;
 }) {
   return (
-    <NoteBox>
+    <NoteBox icon={icon}>
       {children && <>{children} · </>}
       ข้อมูลจาก {vendorLabel(freshness.provider)} · อัปเดต {formatMarketTime(freshness.fetchedAt)}
       {freshness.stale && " (ข้อมูลเก่า ผู้ให้บริการไม่ตอบสนอง)"}

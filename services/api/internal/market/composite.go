@@ -141,6 +141,16 @@ type FundamentalsProvider interface {
 	Recommendations(ctx context.Context, symbol Symbol) ([]RecommendationTrend, error)
 }
 
+// PerformanceProvider is implemented by vendors that report price performance
+// on its own, without the names and profiles that quotes and fundamentals look
+// up. Lists that show only numbers (the sectors) use it to save those calls.
+type PerformanceProvider interface {
+	// DayChanges is Quotes without names, exchanges or logos.
+	DayChanges(ctx context.Context, symbols []Symbol) (map[Symbol]Quote, error)
+	// PriceReturns are the symbol's returns over the longer periods; Day is nil.
+	PriceReturns(ctx context.Context, symbol Symbol) (PriceReturns, error)
+}
+
 // Composite takes quotes, search, earnings and fundamentals from one vendor and candles and
 // market status from another. It is used when a second vendor's free plan
 // has a far larger request allowance but no historical bars.

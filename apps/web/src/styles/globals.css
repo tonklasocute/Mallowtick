@@ -73,6 +73,23 @@
   --color-rating-hold: #b4bfba;
   --color-rating-sell: #f7a9ba;
   --color-rating-strong-sell: #d2445f;
+  /*
+   * Sector heatmap on Discover, by the gap to the S&P 500: 5 is ≥ +10 points, 0 is ≤ -5.
+   * 5 and 0 take white text. From the "กลุ่มอุตสาหกรรมเทียบตลาด" card of the design canvas.
+   */
+  --color-heat-5: #1e9e6a;
+  --color-heat-4: #7fd3a8;
+  --color-heat-3: #cdefdd;
+  --color-heat-2: #f3eee4;
+  --color-heat-1: #ffd5de;
+  --color-heat-0: #e8607c;
+  /* The dark "leading sector" card above the heatmap, and its crown */
+  --color-spot-up: #7fe3b4;
+  --color-spot-deep: #123227;
+  --color-spot-soft: #cfe9dc;
+  --color-spot-muted: #9fc9b6;
+  --color-spot-text: #e6f2ec;
+  --color-gold: #ffc94d;
 
   /* Nunito for Latin and numbers, Mitr for Thai (set up in app/layout.tsx). */
   --font-sans:
@@ -89,6 +106,8 @@
   --shadow-float: 0 18px 36px -16px rgb(29 59 50 / 0.35);
   /* Selected segment of a segmented control */
   --shadow-pressed: 0 6px 14px -6px rgb(29 59 50 / 0.55);
+  /* The leading sector's crown medal */
+  --shadow-medal: 0 4px 10px -4px rgb(0 0 0 / 0.35);
 
   /* Soft ring that spreads from the chart's last-price dot. */
   --animate-pulse-dot: pulse-dot 1.8s ease-out infinite;
@@ -114,6 +133,27 @@
     }
     50% {
       transform: translateY(-4px);
+    }
+  }
+
+  /* Sector card: the leader's medal bobs a little faster, a ring turns slowly, the % breathes. */
+  --animate-medal: bob 3s ease-in-out infinite;
+  --animate-orbit: orbit 24s linear infinite;
+  --animate-pop: pop 2.6s ease-in-out infinite;
+
+  @keyframes orbit {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes pop {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.04);
     }
   }
 }
