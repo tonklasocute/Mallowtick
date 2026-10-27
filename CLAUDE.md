@@ -78,6 +78,13 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   tested on 2026-10-27 but are not used yet. What each free source gives, and what is 403, is in
   [docs/market-data.md](docs/market-data.md#company-fundamentals). The industry name is the
   vendor's English text; there is no Thai mapping yet.
+- Company logos: Finnhub's `profile2` `logo` URL travels as `logo` on quotes and search
+  results (`""` for ETFs, symbols without one, and Twelve Data alone). The browser never
+  loads Finnhub directly: `SymbolAvatar` uses `next/image`, so the server shrinks the
+  1000×1000 originals and caches them for a day. `images.remotePatterns` in
+  `next.config.ts` allows only `*.finnhub.io/file/publicdatany/finnhubimage/stock_logo/**`
+  (the redirect to another `static*` host is followed without matching again). Initials
+  stay underneath and take over when there is no logo, it fails, or the PWA is offline.
 - Freshness and `/health` name the vendor per kind of data (`Service.source(kind)`). Keep
   that when adding a data kind; never label one vendor's data with another's name.
 - Never sum Twelve Data free-plan intraday volumes. They cover only part of the market

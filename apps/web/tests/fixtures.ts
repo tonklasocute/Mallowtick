@@ -20,6 +20,7 @@ export function quote(overrides: Partial<Quote> = {}): Quote {
     name: "Apple Inc.",
     exchange: "NASDAQ",
     currency: "USD",
+    logo: "",
     price: 189.32,
     open: 187.42,
     high: 189.76,

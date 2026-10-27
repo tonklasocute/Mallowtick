@@ -75,7 +75,7 @@ Data flow rules:
 - No streaming: quotes are polled (see [market-data.md](market-data.md#polling-strategy-no-streaming-in-v1)).
 - The free Twelve Data plan's daily credits run out quickly with continuous polling. Tune `QUOTE_CACHE_TTL` or upgrade.
 - Benchmarks are ETFs (SPY/QQQ/DIA), not index levels.
-- No company logos (initials are shown instead), news, financials, technical indicators, or portfolio.
+- Company logos come only from Finnhub (none with Twelve Data alone, and none for ETFs); initials are shown instead. No news, technical indicators, or portfolio.
 - The watchlist is per device and not synced. It holds at most 25 symbols (the API batch limit).
 - Support/resistance has no multi-timeframe confluence, and its parameters aren't runtime-configurable.
 - Server caches are in-memory and per process. Multiple API replicas would each spend provider credits; use a shared cache before scaling out.

@@ -19,6 +19,8 @@ export interface Quote {
   name: string;
   exchange: string;
   currency: string;
+  /** https URL of the company logo; empty when the vendor has none (ETFs). */
+  logo: string;
   price: number;
   open: number | null;
   high: number | null;
@@ -59,6 +61,8 @@ export interface Instrument {
   currency?: string;
   type?: string;
   country?: string;
+  /** https URL of the company logo, when the vendor has one. */
+  logo?: string;
 }
 
 export interface SearchResponse {

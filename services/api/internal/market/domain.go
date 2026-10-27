@@ -36,6 +36,9 @@ type Instrument struct {
 	Currency string `json:"currency,omitempty"`
 	Type     string `json:"type,omitempty"`
 	Country  string `json:"country,omitempty"`
+	// Logo is an https URL to the company's logo, empty when the vendor has none
+	// (ETFs, or a vendor without logos).
+	Logo string `json:"logo,omitempty"`
 }
 
 // Quote is the latest available trading data for one symbol as reported by
@@ -46,6 +49,7 @@ type Quote struct {
 	Name          string   `json:"name"`
 	Exchange      string   `json:"exchange"`
 	Currency      string   `json:"currency"`
+	Logo          string   `json:"logo"`
 	Price         float64  `json:"price"`
 	Open          *float64 `json:"open"`
 	High          *float64 `json:"high"`
