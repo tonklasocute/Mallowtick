@@ -123,6 +123,40 @@ func TestETFNameComesFromSearch(t *testing.T) {
 	}
 }
 
+func TestFundamentalsMapProfileAndMetrics(t *testing.T) {
+	var metrics atomic.Int32
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/stock/profile2": respond(`{"name":"Rocket Lab Corp","exchange":"NASDAQ NMS - GLOBAL MARKET","currency":"USD",` +
+			`"country":"US","ipo":"2020-11-16","finnhubIndustry":"Aerospace & Defense",` +
+			`"weburl":"https://rocketlabcorp.com/","shareOutstanding":598.46}`),
+		"/stock/metric": func(w http.ResponseWriter, _ *http.Request) {
+			metrics.Add(1)
+			_, _ = w.Write([]byte(`{"metric":{"52WeekHigh":150.9999,"52WeekLow":37.57,"marketCapitalization":32209.104,` +
+				`"peTTM":null,"psTTM":41.8764,"epsTTM":-0.2795,"revenueGrowthTTMYoy":52.53,"netProfitMarginTTM":-21.51,` +
+				`"totalDebt/totalEquityQuarterly":0.0084,"beta":3.2}}`))
+		},
+	}, 60)
+	ctx := context.Background()
+	f, err := c.Fundamentals(ctx, "RKLB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Industry != "Aerospace & Defense" || f.IPODate != "2020-11-16" || f.Website != "https://rocketlabcorp.com/" ||
+		f.SharesOutstanding == nil || *f.SharesOutstanding != 598.46e6 {
+		t.Fatalf("profile not mapped: %+v", f)
+	}
+	m := f.Metrics
+	if m.MarketCap == nil || *m.MarketCap != 32209.104e6 || m.PE != nil || *m.EPS != -0.2795 ||
+		*m.RevenueGrowthYoY != 52.53 || *m.NetMargin != -21.51 || *m.DebtToEquity != 0.0084 || m.DividendYield != nil {
+		t.Fatalf("metrics not mapped (market cap in units, missing values nil): %+v", m)
+	}
+
+	r, err := c.FiftyTwoWeek(ctx, "RKLB")
+	if err != nil || r == nil || r.High != 150.9999 || metrics.Load() != 1 {
+		t.Fatalf("the 52-week range should be reused from the same call: %+v %v, calls = %d", r, err, metrics.Load())
+	}
+}
+
 func TestUnknownSymbolIsAbsent(t *testing.T) {
 	c := newTestClient(t, map[string]http.HandlerFunc{
 		"/quote": respond(`{"c":0,"d":null,"dp":null,"h":0,"l":0,"o":0,"pc":0,"t":0}`),

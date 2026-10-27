@@ -138,6 +138,17 @@ export function useEarnings(symbol: string) {
   });
 }
 
+/** Company profile and key ratios; the server caches them for 6h. */
+export function useFundamentals(symbol: string) {
+  return useQuery({
+    queryKey: ["fundamentals", symbol] as const,
+    queryFn: ({ signal }) => endpoints.fundamentals(symbol, signal),
+    staleTime: 60 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
 export function useLevels(symbol: string, range: ChartRange) {
   return useQuery({
     queryKey: queryKeys.levels(symbol, range),

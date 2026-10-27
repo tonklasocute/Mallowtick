@@ -63,10 +63,10 @@ Liveness and provider configuration. Always 200 while the server runs.
 { "data": { "status": "ok", "time": "…", "provider": { "name": "finnhub+twelvedata", "configured": true, "latency": "unknown",
   "sources": { "quotes": { "name": "finnhub", "configured": true }, "search": { "name": "finnhub", "configured": true },
     "candles": { "name": "twelvedata", "configured": true }, "status": { "name": "twelvedata", "configured": true },
-    "earnings": { "name": "finnhub", "configured": true } } } } }
+    "earnings": { "name": "finnhub", "configured": true }, "fundamentals": { "name": "finnhub", "configured": true } } } } }
 ```
 
-`sources` names the vendor behind each kind of data. With Twelve Data alone every entry is `twelvedata`, and `earnings` is absent.
+`sources` names the vendor behind each kind of data. With Twelve Data alone every entry is `twelvedata`, and `earnings` and `fundamentals` are absent.
 
 ### `GET /market/status`
 
@@ -127,6 +127,22 @@ The next scheduled earnings report, from a vendor with an earnings calendar (Fin
 ```
 
 `hour` is `bmo` (before the open), `amc` (after the close), `dmh` (during the session), or empty.
+
+### `GET /stocks/{symbol}/fundamentals`
+
+Company profile and key ratios from a vendor that publishes them (Finnhub: `/stock/profile2`, cached 24h, plus one `/stock/metric` call). Fails with `provider_not_configured` without one. Cached for 6h.
+
+```json
+{ "data": { "symbol": "RKLB", "industry": "Aerospace & Defense", "country": "US", "ipoDate": "2020-11-16",
+  "website": "https://rocketlabcorp.com/", "sharesOutstanding": 598460000,
+  "metrics": { "marketCap": 32209104000, "enterpriseValue": 30108932000, "peTTM": null, "psTTM": 41.8764, "pb": 17.4119,
+    "epsTTM": -0.2795, "revenueGrowthYoY": 52.53, "revenueGrowth5Y": 76.47, "epsGrowthYoY": null,
+    "grossMarginTTM": 37.26, "operatingMarginTTM": -29.82, "netMarginTTM": -21.51, "roeTTM": -7.56,
+    "currentRatio": 5.4824, "debtToEquity": 0.0084, "dividendYield": null, "payoutRatioTTM": null, "beta": 3.2037 },
+  "freshness": { "provider": "finnhub", … } } }
+```
+
+Money is in the listing currency (the vendor's millions are converted to units). Percentages are in percent units (`52.53` means 52.53%). `TTM` is the trailing twelve months. Values the vendor doesn't report are `null`: `peTTM` is `null` for loss makers, and ETFs have no profile and only `beta`.
 
 ### `GET /stocks/{symbol}/candles?range=1d&warmup=true`
 

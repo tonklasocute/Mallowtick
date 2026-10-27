@@ -41,6 +41,38 @@ The service fills in what Finnhub quotes lack:
 - **Market state:** taken from the cached Twelve Data market status, so labels and closed-market cache lifetimes still work.
 - **Volume:** taken from the session's daily bar only after the close, once that bar is final. During the session it stays unknown (shown as "—"). Twelve Data's free-plan intraday volumes cover only part of the market (AAPL's first 5-minute bar showed about 50k shares), so summing them would be badly wrong. The same partial volumes appear in the 1D/1W chart's volume bars, which are useful for shape only.
 
+## Company fundamentals
+
+Checked with real keys on 2026-10-27 (AAPL, RKLB, SPY) while planning a "know the company" section for Stock Detail. In use: the profile and a subset of `/stock/metric` (`GET /stocks/{symbol}/fundamentals`, shown in the "เกี่ยวกับบริษัท" and "ตัวเลขสำคัญ" cards). It costs one Finnhub call per symbol every 6h (the profile is already cached for the name), and the same call refreshes the 52-week range. The rest of the table is not used yet.
+
+| Data | Source | Free plan |
+|---|---|---|
+| Industry, IPO date, market cap (USD millions), shares outstanding, logo, website | Finnhub `/stock/profile2` (already called for the name) | ✅ Stocks only; `{}` for ETFs |
+| ~130 ratios: P/E, P/S, P/B, EV, margins, ROE/ROA, revenue and EPS growth (YoY, 3Y, 5Y), current ratio, debt/equity, beta, dividend yield, payout, returns vs S&P 500 | Finnhub `/stock/metric?metric=all` (already called for the 52-week range) | ✅ Plus `series.annual`/`series.quarterly` history of ratios and per-share values (no absolute revenue or income). Loss makers have `peTTM: null` and a negative `epsTTM`. ETFs get only price returns, 52-week range and beta. |
+| EPS actual vs estimate | Finnhub `/stock/earnings` | ✅ Last 4 quarters only (`limit=12` still returns 4) |
+| Analyst buy/hold/sell counts per month | Finnhub `/stock/recommendation` | ✅ |
+| Peer tickers | Finnhub `/stock/peers` | ✅ Coarse (RKLB's peers include GE and AXON) |
+| Company news | Finnhub `/company-news` | ✅ English; RKLB had 166 articles in two weeks, mostly Yahoo and Benzinga, with headline, summary and image |
+| Insider transactions and monthly sentiment | Finnhub `/stock/insider-transactions`, `/stock/insider-sentiment` | ✅ From SEC Form 4 |
+| Statements as filed | Finnhub `/stock/financials-reported` | ⚠️ 10-Q values are year-to-date (RKLB Q2 EPS -0.15 = Q1 -0.07 + Q2 -0.08), and some years are missing (no 2023 for RKLB) |
+| Quarterly and annual statements | SEC EDGAR `data.sec.gov/api/xbrl/companyfacts/CIK##########.json` | ✅ No key. See below. |
+| Business description | Finnhub `/stock/profile` | ❌ 403 |
+| Standardised statements, price targets, EPS/revenue estimates, dividend history (`dividend`, `dividend2`), institutional ownership, revenue by segment, executives, ETF profile and holdings | Finnhub | ❌ 403 |
+| `/profile`, `/earnings` (Grow+), `/statistics`, `/income_statement` (Pro+) | Twelve Data | ❌ 403; the refusals cost no credits |
+
+**SEC EDGAR** (`companyfacts`, `submissions`, ticker → CIK map in `www.sec.gov/files/company_tickers.json`):
+
+- Requests without a `User-Agent` that names a contact email get 403. SEC allows 10 requests/second.
+- Facts with a `frame` are already single periods: `CY2026Q2` is that quarter alone (RKLB revenue $234M), `CY2025` the year, `CY2026Q2I` a balance-sheet instant. Q4 often has no frame and must be derived as the year minus Q1–Q3. Cash-flow facts are year-to-date too, so most quarters have no frame.
+- Tags differ by company and change over time: AAPL stopped using `Revenues` in 2018 and reports `RevenueFromContractWithCustomerExcludingAssessedTax`. Pick the tag with the latest data.
+- `submissions` has the SIC description (e.g. "Guided Missiles & Space Vehicles & Parts") but an empty `description`.
+
+**Business description** has no free source that covers every company:
+
+- Wikipedia has no Thai page for Rocket Lab, and the English page title is not the company name.
+- Looking pages up by CIK through Wikidata (`P5531`) works for AAPL (English and Thai pages) but RKLB's CIK maps to an item with no Wikipedia page.
+- Left to decide: summarise the 10-K business section into Thai (untested), or show the industry and website only.
+
 ## What is (and isn't) used
 
 | Need | Twelve Data endpoint | Credits |
@@ -50,7 +82,7 @@ The service fills in what Finnhub quotes lack:
 | Candles | `/time_series?order=asc` | 1/request |
 | Market status | `/market_state?code=XNYS` | 1/request |
 
-Not used in V1: WebSocket streaming (Basic/Grow plans only allow trial symbols), company logos, fundamentals, news, US index symbols (SPX/IXIC/DJI). The Discover benchmarks default to the ETFs SPY/QQQ/DIA, and the UI shows the provider's instrument name (e.g. "SPDR S&P 500 ETF Trust"), never an index level.
+Not used in V1: WebSocket streaming (Basic/Grow plans only allow trial symbols), company logos, news, US index symbols (SPX/IXIC/DJI). The Discover benchmarks default to the ETFs SPY/QQQ/DIA, and the UI shows the provider's instrument name (e.g. "SPDR S&P 500 ETF Trust"), never an index level.
 
 The API key is sent in the `Authorization: apikey …` header, never in URLs or logs, and never reaches the browser.
 

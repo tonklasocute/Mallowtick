@@ -76,6 +76,10 @@ func (s *stubService) NextEarnings(_ context.Context, sym market.Symbol) (market
 	s.lastSymbol = sym
 	return market.EarningsResult{Symbol: sym, Next: &market.EarningsEvent{Symbol: string(sym), Date: "2026-11-02", Hour: "amc"}}, s.err
 }
+func (s *stubService) Fundamentals(_ context.Context, sym market.Symbol) (market.FundamentalsResult, error) {
+	s.lastSymbol = sym
+	return market.FundamentalsResult{Fundamentals: market.Fundamentals{Symbol: string(sym), Industry: "Technology"}}, s.err
+}
 func (s *stubService) MarketStatus(context.Context) (market.StatusResult, error) {
 	return market.StatusResult{MarketStatus: market.MarketStatus{Exchange: "XNYS", IsOpen: true}}, s.err
 }
@@ -125,6 +129,7 @@ func TestSuccessfulRequests(t *testing.T) {
 		{"/api/v1/stocks/aapl/candles?range=1y", `"range":"1y"`},
 		{"/api/v1/stocks/aapl/levels", `"range":"3m"`},
 		{"/api/v1/stocks/aapl/earnings", `"date":"2026-11-02"`},
+		{"/api/v1/stocks/aapl/fundamentals", `"industry":"Technology"`},
 	}
 	for _, tc := range cases {
 		rec, env := do(t, svc, http.MethodGet, tc.target, nil)

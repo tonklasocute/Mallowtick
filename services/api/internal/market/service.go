@@ -44,6 +44,9 @@ const (
 	searchLimit  = 10
 	// Earnings dates rarely move; a day is plenty of notice either way.
 	earningsTTL = 12 * time.Hour
+	// The vendor recomputes ratios from the latest close, so a few hours is
+	// close enough and costs at most a handful of calls a day per symbol.
+	fundamentalsTTL = 6 * time.Hour
 )
 
 // Service is the application layer between transports and a Provider.
@@ -53,12 +56,13 @@ type Service struct {
 	log      *slog.Logger
 	group    singleflight.Group
 
-	quotes      *cache.TTL[Quote]
-	candles     *cache.TTL[CandleSeries]
-	searches    *cache.TTL[[]Instrument]
-	instruments *cache.TTL[Instrument]
-	status      *cache.TTL[MarketStatus]
-	earnings    *cache.TTL[*EarningsEvent]
+	quotes       *cache.TTL[Quote]
+	candles      *cache.TTL[CandleSeries]
+	searches     *cache.TTL[[]Instrument]
+	instruments  *cache.TTL[Instrument]
+	status       *cache.TTL[MarketStatus]
+	earnings     *cache.TTL[*EarningsEvent]
+	fundamentals *cache.TTL[Fundamentals]
 }
 
 // NewService wires a provider with caches.
@@ -71,15 +75,16 @@ func NewService(p Provider, cfg ServiceConfig) *Service {
 	}
 	retain := cfg.StaleRetention
 	return &Service{
-		provider:    p,
-		cfg:         cfg,
-		log:         cfg.Logger,
-		quotes:      cache.New[Quote](cfg.QuoteTTL, retain, 2000, cfg.Now),
-		candles:     cache.New[CandleSeries](time.Minute, retain, 500, cfg.Now),
-		searches:    cache.New[[]Instrument](searchTTL, retain, 1000, cfg.Now),
-		instruments: cache.New[Instrument](instrumentTTL, instrumentTTL, 2000, cfg.Now),
-		status:      cache.New[MarketStatus](statusTTL, retain, 1, cfg.Now),
-		earnings:    cache.New[*EarningsEvent](earningsTTL, retain, 1000, cfg.Now),
+		provider:     p,
+		cfg:          cfg,
+		log:          cfg.Logger,
+		quotes:       cache.New[Quote](cfg.QuoteTTL, retain, 2000, cfg.Now),
+		candles:      cache.New[CandleSeries](time.Minute, retain, 500, cfg.Now),
+		searches:     cache.New[[]Instrument](searchTTL, retain, 1000, cfg.Now),
+		instruments:  cache.New[Instrument](instrumentTTL, instrumentTTL, 2000, cfg.Now),
+		status:       cache.New[MarketStatus](statusTTL, retain, 1, cfg.Now),
+		earnings:     cache.New[*EarningsEvent](earningsTTL, retain, 1000, cfg.Now),
+		fundamentals: cache.New[Fundamentals](fundamentalsTTL, retain, 1000, cfg.Now),
 	}
 }
 
@@ -113,12 +118,26 @@ func (s *Service) ProviderInfo() ProviderInfo {
 	}
 	for _, kind := range DataKinds {
 		p := s.source(kind)
-		if _, ok := p.(EarningsProvider); kind == KindEarnings && !ok {
-			continue // no vendor publishes an earnings calendar in this deployment
+		if !serves(p, kind) {
+			continue // no vendor publishes this kind of data in this deployment
 		}
 		info.Sources[kind] = SourceInfo{Name: p.Name(), Configured: p.Configured()}
 	}
 	return info
+}
+
+// serves reports whether p can supply kind; earnings and fundamentals need an
+// optional interface that not every vendor implements.
+func serves(p Provider, kind DataKind) bool {
+	switch kind {
+	case KindEarnings:
+		_, ok := p.(EarningsProvider)
+		return ok
+	case KindFundamentals:
+		_, ok := p.(FundamentalsProvider)
+		return ok
+	}
+	return true
 }
 
 // QuoteResult is a quote plus its freshness metadata.
@@ -492,6 +511,27 @@ func (s *Service) NextEarnings(ctx context.Context, symbol Symbol) (EarningsResu
 		return EarningsResult{}, err
 	}
 	return EarningsResult{Symbol: symbol, Next: e.Value, Freshness: s.freshness(KindEarnings, nil, e.StoredAt, stale)}, nil
+}
+
+// FundamentalsResult is a company profile and its key metrics.
+type FundamentalsResult struct {
+	Fundamentals
+	Freshness Freshness `json:"freshness"`
+}
+
+// Fundamentals returns the company profile and key metrics. It fails with
+// ErrNotConfigured when no configured vendor publishes them.
+func (s *Service) Fundamentals(ctx context.Context, symbol Symbol) (FundamentalsResult, error) {
+	fp, ok := s.source(KindFundamentals).(FundamentalsProvider)
+	if !ok {
+		return FundamentalsResult{}, ErrNotConfigured
+	}
+	e, stale, err := load(ctx, s, s.fundamentals, "fundamentals:"+string(symbol), fixedTTL[Fundamentals](fundamentalsTTL),
+		func(fctx context.Context) (Fundamentals, error) { return fp.Fundamentals(fctx, symbol) })
+	if err != nil {
+		return FundamentalsResult{}, err
+	}
+	return FundamentalsResult{Fundamentals: e.Value, Freshness: s.freshness(KindFundamentals, nil, e.StoredAt, stale)}, nil
 }
 
 // Quotes returns quotes for several symbols. It fails only when nothing could

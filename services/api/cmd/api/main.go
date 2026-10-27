@@ -115,8 +115,8 @@ func newLogger(cfg config.Config) *slog.Logger {
 }
 
 // newProvider returns Twelve Data alone, or, with a Finnhub key, Finnhub for
-// quotes, search and earnings combined with Twelve Data for candles and market
-// status.
+// quotes, search, earnings and fundamentals combined with Twelve Data for
+// candles and market status.
 func newProvider(cfg config.Config, log *slog.Logger) (market.Provider, error) {
 	var bars market.Provider = market.Unconfigured{ProviderName: twelvedata.ProviderName}
 	if cfg.ProviderConfigured() {
