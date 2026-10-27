@@ -111,6 +111,23 @@ describe("CompanyFundamentals", () => {
     expect(screen.getByText(/ข้อมูลจาก Finnhub/)).toBeInTheDocument();
   });
 
+  it("keeps a huge growth figure on one line without decimals", async () => {
+    mockFundamentals(() =>
+      ok({
+        ...RKLB,
+        metrics: { ...RKLB.metrics, revenueGrowthYoY: 2256.89, revenueGrowth5Y: 64.04 },
+      }),
+    );
+    renderWithProviders(<CompanyFundamentals symbol="RKLB" />);
+
+    const big = (await screen.findByText("รายได้ เทียบปีก่อน")).nextSibling as HTMLElement;
+    expect(big).toHaveTextContent("+2,257%");
+    // nowrap keeps the arrow beside the number instead of wrapping after it.
+    expect(big).toHaveClass("whitespace-nowrap");
+    expect(screen.getByText("รายได้ เฉลี่ยต่อปี 5 ปี").nextSibling).toHaveTextContent("+64.04%");
+    expect(screen.getByText("รายได้ เฉลี่ยต่อปี 5 ปี").nextSibling).toHaveClass("text-2xl");
+  });
+
   it("says when the vendor has nothing for the symbol", async () => {
     mockFundamentals(() =>
       ok({
