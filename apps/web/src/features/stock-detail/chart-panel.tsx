@@ -53,7 +53,14 @@ const candleLabel = (interval: string) => {
   return label.startsWith("ราย") ? `แท่งเทียน${label}` : `แท่งเทียน ${label}`;
 };
 
+const lineLabel = (interval: string) => {
+  const label = intervalLabel(interval);
+  return label.startsWith("ราย") ? `กราฟเส้นราคาปิด${label}` : `กราฟเส้นราคาปิด ${label}`;
+};
+
 const CHART_HEIGHT = 300;
+/** Above this many bars (1Y, 5Y) candles get too thin to read, so the chart draws a close line. */
+const MAX_CANDLES = 140;
 
 interface ChartPanelProps {
   range: ChartRange;
@@ -67,21 +74,16 @@ interface Ohlc {
   high: number;
   low: number;
   close: number;
-  /** Close before the bar (or before the range) that the change is measured from. */
+  /** Close before the range that the change is measured from. */
   base: number;
 }
 
-/** The hovered bar, or the whole range when nothing is hovered. */
-function ohlcFor(data: CandleSeries, hover: number | null): Ohlc | null {
+/** The whole range; the chart's tooltip shows a single bar. */
+function ohlcFor(data: CandleSeries): Ohlc | null {
   const cs = data.candles;
   const first = cs[0];
   const last = cs.at(-1);
   if (!first || !last) return null;
-  const bar = hover === null ? undefined : cs[hover];
-  if (bar && hover !== null) {
-    const prev = hover > 0 ? cs[hover - 1]!.close : data.warmup?.at(-1)?.close;
-    return { ...bar, base: prev ?? bar.open };
-  }
   return {
     open: first.open,
     high: Math.max(...cs.map((c) => c.high)),
@@ -93,9 +95,9 @@ function ohlcFor(data: CandleSeries, hover: number | null): Ohlc | null {
 
 function StatChip({ label, value }: { label: string; value: number }) {
   return (
-    <span className="inline-flex items-baseline gap-1 rounded-full bg-cream-deep/70 px-2.5 py-1.5 text-[13px]">
+    <span className="inline-flex items-baseline gap-1.5 rounded-[14px] bg-cream-deep/70 px-3 py-1.5 text-[13px]">
       <span className="text-slate-strong">{label}</span>
-      <span className="tabular font-semibold text-ink">{formatNumber(value)}</span>
+      <span className="tabular font-display font-extrabold text-ink">{formatNumber(value)}</span>
     </span>
   );
 }
@@ -116,7 +118,7 @@ function ToggleChip({
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={cn(
-        "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[13px] font-semibold transition",
+        "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[13px] font-medium transition",
         checked
           ? "border-transparent bg-cream-deep/70 text-ink"
           : "border-dashed border-slate/40 text-slate-strong hover:text-ink",
@@ -185,7 +187,8 @@ export function ChartPanel({ range, onRangeChange, candles, levels }: ChartPanel
   );
 
   const shownLevels = prefs.showLevels ? levels : [];
-  const ohlc = data ? ohlcFor(data, hover) : null;
+  const ohlc = data ? ohlcFor(data) : null;
+  const kind = data && data.candles.length > MAX_CANDLES ? "line" : "candles";
   const legendIndex = hover ?? (data ? data.candles.length - 1 : -1);
   const short = emaLines.filter((l) => l.values.every((v) => v === null));
 
@@ -209,6 +212,7 @@ export function ChartPanel({ range, onRangeChange, candles, levels }: ChartPanel
         lines={chartLines}
         levels={shownLevels}
         showVolume={prefs.showVolume}
+        kind={kind}
         intraday={["1d", "1w"].includes(range)}
         height={CHART_HEIGHT}
         onHover={setHover}
@@ -321,8 +325,8 @@ export function ChartPanel({ range, onRangeChange, candles, levels }: ChartPanel
           )}
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <span>
-              {candleLabel(data.interval)} · {RANGE_SPANS[range]} · แท่งล่าสุด{" "}
-              {formatBarTime(last.time, data.interval)}
+              {kind === "line" ? lineLabel(data.interval) : candleLabel(data.interval)} ·{" "}
+              {RANGE_SPANS[range]} · แท่งล่าสุด {formatBarTime(last.time, data.interval)}
               {data.freshness.stale && (
                 <strong className="ml-1 text-down">
                   · ข้อมูลเก่า (ผู้ให้บริการไม่พร้อมใช้งาน)

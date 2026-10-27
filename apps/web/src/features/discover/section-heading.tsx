@@ -3,7 +3,7 @@ export function SectionHeading({ id, children }: { id: string; children: string 
   return (
     <h2
       id={id}
-      className="flex items-center gap-2 px-1 font-display text-[17px] font-semibold text-ink"
+      className="flex items-center gap-2 px-1 font-display text-[17px] font-medium text-ink"
     >
       <span
         aria-hidden
