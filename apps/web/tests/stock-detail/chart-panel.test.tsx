@@ -98,6 +98,12 @@ describe("ChartPanel", () => {
     expect(screen.getByText("+5.00 (+5.00%)")).toBeInTheDocument();
   });
 
+  it("draws a close line instead of candles for long ranges", () => {
+    renderPanel(series(Array(141).fill(10)));
+    expect(chartProps.current?.kind).toBe("line");
+    expect(screen.getByText(/กราฟเส้นราคาปิดรายวัน/)).toBeVisible();
+  });
+
   it("computes EMA from warm-up bars and passes only visible values to the chart", () => {
     const flat = Array(30).fill(50);
     window.localStorage.setItem(

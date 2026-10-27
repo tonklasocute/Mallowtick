@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Mitr, Nunito } from "next/font/google";
 import type { ReactNode } from "react";
 
 import "@/styles/globals.css";
@@ -9,6 +10,16 @@ import { SideNav } from "@/components/layout/side-nav";
 import { BRAND } from "@/lib/brand";
 
 import { Providers } from "./providers";
+
+// Self-hosted at build time, so they also work offline. Nunito has no Thai glyphs;
+// Thai text falls back to Mitr (see --font-sans in globals.css).
+const nunito = Nunito({ subsets: ["latin"], variable: "--ff-nunito", display: "swap" });
+const mitr = Mitr({
+  subsets: ["thai", "latin"],
+  weight: ["300", "400", "500", "600"],
+  variable: "--ff-mitr",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: { default: BRAND.name, template: `%s · ${BRAND.name}` },
@@ -34,7 +45,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="th">
+    <html lang="th" className={`${nunito.variable} ${mitr.variable}`}>
       <body>
         <Providers>
           <SideNav />

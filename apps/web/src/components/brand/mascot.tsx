@@ -7,7 +7,10 @@ interface MascotProps {
   label?: string;
 }
 
-/** Mallow, the marshmallow mascot. Colors come from design tokens. */
+/**
+ * Mallow, the marshmallow mascot: a white body with a dark outline and a two-leaf
+ * sprout, as drawn on the Claude design canvas. Colors come from design tokens.
+ */
 export function Mascot({ size = 40, className, label }: MascotProps) {
   return (
     <svg
@@ -20,51 +23,40 @@ export function Mascot({ size = 40, className, label }: MascotProps) {
       aria-hidden={label ? undefined : true}
     >
       <path
-        d="M32 15 C32 12 32 10 32.5 8"
-        className="fill-none stroke-mint-deep"
-        strokeWidth="1.8"
+        d="M32 16 C32 10 30 7 27 5"
+        className="fill-none stroke-candle-up"
+        strokeWidth="3"
         strokeLinecap="round"
       />
-      <ellipse
-        cx="26.5"
-        cy="8"
-        rx="5.2"
-        ry="3"
-        transform="rotate(-25 26.5 8)"
-        className="fill-mint stroke-mint-deep"
-        strokeWidth="1.2"
-      />
-      <ellipse
-        cx="38"
-        cy="7"
-        rx="5.2"
-        ry="3"
-        transform="rotate(20 38 7)"
-        className="fill-mint stroke-mint-deep"
-        strokeWidth="1.2"
-      />
+      <path d="M30 9 C24 3 16 5 15 10 C21 13 27 12 30 9 Z" className="fill-mint" />
+      <path d="M31 10 C35 3 43 3 46 7 C41 12 35 13 31 10 Z" className="fill-candle-up" />
       <rect
-        x="11"
-        y="15"
-        width="42"
-        height="43"
-        rx="16"
-        className="fill-surface stroke-peach"
-        strokeWidth="2"
+        x="10"
+        y="16"
+        width="44"
+        height="42"
+        rx="18"
+        className="fill-surface stroke-ink"
+        strokeWidth="2.5"
       />
-      <path d="M15 46 C20 54 44 54 49 46 L49 44 C49 52 15 52 15 44 Z" className="fill-cream-deep" />
-      <circle cx="25" cy="35" r="2.8" className="fill-ink" />
-      <circle cx="39" cy="35" r="2.8" className="fill-ink" />
-      <circle cx="26" cy="34" r="0.9" className="fill-surface" />
-      <circle cx="40" cy="34" r="0.9" className="fill-surface" />
       <path
-        d="M29 40.5 Q32 43.5 35 40.5"
-        className="fill-none stroke-ink"
-        strokeWidth="1.8"
+        d="M16.5 27.6 Q17.8 21.2 24.2 19.2"
+        className="fill-none stroke-line"
+        strokeWidth="2.6"
         strokeLinecap="round"
       />
-      <ellipse cx="19.5" cy="40.5" rx="3.4" ry="2.1" className="fill-accent" opacity="0.75" />
-      <ellipse cx="44.5" cy="40.5" rx="3.4" ry="2.1" className="fill-accent" opacity="0.75" />
+      <circle cx="24" cy="36" r="3" className="fill-ink" />
+      <circle cx="40" cy="36" r="3" className="fill-ink" />
+      <circle cx="25" cy="35" r="0.9" className="fill-surface" />
+      <circle cx="41" cy="35" r="0.9" className="fill-surface" />
+      <ellipse cx="18" cy="43" rx="4" ry="2.6" className="fill-accent" />
+      <ellipse cx="46" cy="43" rx="4" ry="2.6" className="fill-accent" />
+      <path
+        d="M28 43 Q32 47 36 43"
+        className="fill-none stroke-ink"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

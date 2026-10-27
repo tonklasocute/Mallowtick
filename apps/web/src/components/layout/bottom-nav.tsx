@@ -24,7 +24,7 @@ export function BottomNav() {
                 href={href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex h-12 items-center gap-1.5 rounded-full px-3 text-[13px] min-[380px]:px-4 font-semibold whitespace-nowrap transition",
+                  "flex h-12 items-center gap-1.5 rounded-full px-3 text-[13px] min-[380px]:px-4 whitespace-nowrap transition",
                   active ? "bg-ink text-surface" : "text-slate hover:text-ink",
                 )}
               >

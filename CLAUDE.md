@@ -80,8 +80,12 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   bars, four colour slots) are computed in the browser (`lib/ema.ts`) from the API's
   `warmup` + `candles`; chart layer toggles and periods are saved per device
   (`features/stock-detail/chart-prefs.ts`).
-- The chart card follows a cute pastel mock: pastel candles, prices as pills beside the
-  plot instead of a price axis, dashed pink/mint levels. There are no earnings markers on
+- The chart card follows the "กราฟราคา (Chart card)" artboard of the Claude design canvas:
+  pastel candles, a dashed grid at round prices labelled in the pill column instead of a
+  price axis, level pills ("R1 56.13" on phones, "แนวต้าน 1 56.13" from `sm`), a pulsing
+  last-price dot and a dark hover tooltip with the bar's OHLC and volume. Above 140 bars
+  (1Y, 5Y) it draws a close line with a soft fill instead of candles. The grid is an SVG
+  overlay; SVG attributes can't read CSS variables, so colour it with classes. There are no earnings markers on
   the chart, since no vendor here provides past report dates. The next report is shown as a
   badge under the price instead (`features/stock-detail/earnings-badge.tsx`, from Finnhub).
 - The chart shows **no TradingView logo** (`attributionLogo: false`, the user's decision).
@@ -102,6 +106,13 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   purpose because each costs a provider credit (user's decision, 2026-10-26).
 - The hero mascot floats slowly (`animate-bob`, 4 s). It stays still under
   `prefers-reduced-motion`, which Windows turns on when "Animation effects" is off.
+- Fonts follow the design canvas: Nunito for Latin text and numbers, Mitr for Thai, loaded
+  with `next/font` in `app/layout.tsx` (self-hosted, so offline works). Nunito has no Thai
+  glyphs, so Thai falls back to Mitr in the same font stack. Mitr looks heavy: the canvas
+  uses 300–500 for Thai, so prefer `font-light`/`font-normal`/`font-medium` on Thai copy.
+- The mascot (`components/brand/mascot.tsx`) is drawn as on the canvas: a white body with a
+  dark outline, not the cream body of docs/design-reference.png (user's decision,
+  2026-10-27). The favicon and app icons in `public/icons` still show the old mascot.
 - The design's bell button and "ดูทั้งหมด" link are omitted: there are no notifications or
   full popular list yet.
 

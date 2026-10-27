@@ -32,7 +32,7 @@ export function DiscoverHero() {
               </>
             )}
           </h2>
-          <p className="text-[13px] leading-relaxed text-slate-strong">
+          <p className="text-[13px] leading-relaxed font-light text-slate-strong">
             ค้นหาหุ้นสหรัฐฯ ดูภาพรวมตลาด และเก็บหุ้นที่สนใจไว้ใกล้ ๆ ตัว
           </p>
           <MarketStatusPill className="mt-1.5" />
