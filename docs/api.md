@@ -115,7 +115,7 @@ US instruments matching a ticker or company name (up to 10).
   "logo": "https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png" }] } }
 ```
 
-`logo` is an https URL, left out when the vendor has none (ETFs, symbols Finnhub has no logo for, and Twelve Data alone). With Finnhub the API looks logos up for the results (one `/stock/profile2` call per symbol, cached 24h, within 2 seconds); a failure only costs the logos, never the search.
+`logo` is an https URL, left out when the vendor has none (ETFs, symbols Finnhub has no logo for, and Twelve Data alone). With Finnhub the results carry the logos the API already knows (cached 24h) and the search never waits for one: the missing logos of the first 5 results are looked up in the background (one `/stock/profile2` call per symbol, only while at least 10 of the 60 calls a minute are free), so a later search or screen shows them. A failure only costs the logos, never the search.
 
 ### `GET /stocks/quotes?symbols=AAPL,MSFT`
 

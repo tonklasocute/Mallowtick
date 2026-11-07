@@ -88,10 +88,22 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   `next.config.ts` allows only `*.finnhub.io/file/publicdatany/finnhubimage/stock_logo/**`
   (the redirect to another `static*` host is followed without matching again). Initials
   stay underneath and take over when there is no logo, it fails, or the PWA is offline.
+- Search never waits for logos: it attaches the cached ones, and `fillLogos` looks up the
+  first 5 results' missing ones in the background, only while at least 10 Finnhub calls
+  are free (`logoHeadroom`). `Service.Search` fills empty logos from `market.LogoSource`
+  when it answers, so the 24h search cache does not keep results logo-less. Don't move
+  the profile calls back onto the request path: they made a cold search 1.26 s and filled
+  the shared budget.
 - Freshness and `/health` name the vendor per kind of data (`Service.source(kind)`). Keep
   that when adding a data kind; never label one vendor's data with another's name. A response
   that mixes vendors names both, joined by `+` (`twelvedata+finnhub`); `vendorLabel` shows
   "Twelve Data + Finnhub".
+- Each Finnhub call takes ~300–400 ms from Thailand (measured 2026-11), and Stock Detail asks
+  for `/quote` and `/fundamentals` at once. So the quote, its profile and the 52-week range
+  are fetched together, and concurrent profile and `/stock/metric` calls for one symbol
+  share one request (`share` in `finnhub/client.go`, detached like `Service.do`). Read
+  `/stock/metric` through `startMetrics`, not `c.get`. A quote books its call before its
+  profile starts, so the name never takes the room the price needs.
 - Never sum Twelve Data free-plan intraday volumes. They cover only part of the market
   (about 50k shares in AAPL's first 5-minute bar), so totals are far too low. Session
   volume comes from the final daily bar after the close, or stays unknown.
@@ -169,6 +181,11 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   calls and went over 60/min; without them it is ~40. If the limit still leaves a sector out,
   it shows "รอโควตา กำลังโหลดใหม่" while `useSectors` retries every 15 s. Don't raise
   `FINNHUB_MAX_WAIT` to hide it (a 60 s wait would hold requests open).
+- The heatmap refreshes every 5 minutes: the API keeps the day changes that long
+  (`sectorQuoteTTL`, until the next open when closed) and `useSectors` polls as often
+  (`SECTORS_REFRESH_MS`). Every minute it took 12 of Finnhub's 60 calls/min and left
+  searches and Stock Detail short. Its "อัปเดต" time is the data's own fetch time, so it can
+  read up to ~10 minutes old; it has no freshness badge that would call that stale.
 
 ## Watchlist screen
 

@@ -3,6 +3,7 @@ package market
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -211,6 +212,80 @@ func TestSingleQuoteAddsTheRangeEvenWhenCachedFromABatch(t *testing.T) {
 	}
 }
 
+// overlapFake is a range vendor whose quote and range lookups each wait until
+// the other has started, so a Service that runs them one after the other fails.
+// With holdRange the range lookup then waits for its context to end, and
+// rangeEnded receives why it ended.
+type overlapFake struct {
+	*fakeProvider
+	quoteIn, rangeIn chan struct{}
+	holdRange        bool
+	rangeEnded       chan error
+}
+
+func newOverlapFake(p *fakeProvider) *overlapFake {
+	return &overlapFake{fakeProvider: p, quoteIn: make(chan struct{}), rangeIn: make(chan struct{}), rangeEnded: make(chan error, 1)}
+}
+
+// await waits for ch, failing after a deadline so sequential code cannot hang.
+func await(ctx context.Context, ch <-chan struct{}) error {
+	select {
+	case <-ch:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(5 * time.Second):
+		return errors.New("the other call never started")
+	}
+}
+
+func (o *overlapFake) Quotes(ctx context.Context, symbols []Symbol) (map[Symbol]Quote, error) {
+	close(o.quoteIn)
+	if err := await(ctx, o.rangeIn); err != nil {
+		return nil, err
+	}
+	return o.fakeProvider.Quotes(ctx, symbols)
+}
+
+func (o *overlapFake) FiftyTwoWeek(ctx context.Context, _ Symbol) (*Range52, error) {
+	close(o.rangeIn)
+	err := await(ctx, o.quoteIn)
+	if err == nil && o.holdRange {
+		err = await(ctx, nil) // a nil channel never delivers: only the context ends this
+	}
+	o.rangeEnded <- err
+	if err != nil {
+		return nil, err
+	}
+	return &Range52{Low: 243.42, High: 351.73}, nil
+}
+
+func TestQuoteLooksTheRangeUpAlongside(t *testing.T) {
+	p := newOverlapFake(&fakeProvider{quotes: map[Symbol]Quote{"AAPL": quote("AAPL", 1, true)}})
+	s := newTestService(p, &testClock{t: time.Unix(0, 0)})
+	got, err := s.Quote(context.Background(), "AAPL")
+	if err != nil || got.FiftyTwoWeek == nil || got.FiftyTwoWeek.High != 351.73 {
+		t.Fatalf("the quote should carry the range looked up alongside it: %+v %v", got.FiftyTwoWeek, err)
+	}
+}
+
+func TestFailedQuoteDropsTheRangeLookup(t *testing.T) {
+	p := newOverlapFake(&fakeProvider{quoteErr: ErrUnavailable})
+	p.holdRange = true
+	s := newTestService(p, &testClock{t: time.Unix(0, 0)})
+	if _, err := s.Quote(context.Background(), "AAPL"); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("got %v, want the quote's error", err)
+	}
+	select {
+	case err := <-p.rangeEnded:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("the range lookup should be cancelled with the request, got %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the range lookup outlived the request")
+	}
+}
+
 func TestEarningsHistoryAndRecommendationsAreCached(t *testing.T) {
 	clk := &testClock{t: time.Unix(0, 0)}
 	quotes := &fundamentalsFake{earningsFake: &earningsFake{namedFake: namedFake{&fakeProvider{}, "finnhub"}}}
@@ -262,6 +337,71 @@ func TestExchangeRateComesFromTheBarVendorAndIsCached(t *testing.T) {
 	}
 	if info := s.ProviderInfo(); info.Sources[KindFX].Name != "twelvedata" {
 		t.Fatalf("health should name the fx vendor: %+v", info.Sources)
+	}
+}
+
+// logoFake is a quote vendor that, like Finnhub, keeps the logos it has looked
+// up and searches without waiting for them.
+type logoFake struct {
+	namedFake
+	searches atomic.Int32
+	mu       sync.Mutex
+	logos    map[Symbol]string
+}
+
+const msftLogo = "https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/MSFT.png"
+
+func (l *logoFake) SearchSymbols(context.Context, string, int) ([]Instrument, error) {
+	l.searches.Add(1)
+	return []Instrument{{Symbol: "AAPL", Name: "Apple Inc"}, {Symbol: "SPY", Name: "SPDR S&P 500 ETF"},
+		{Symbol: "MSFT", Name: "Microsoft Corp", Logo: msftLogo}}, nil
+}
+
+func (l *logoFake) CachedLogo(sym Symbol) (string, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	logo, ok := l.logos[sym]
+	return logo, ok
+}
+
+func (l *logoFake) learn(sym Symbol, logo string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.logos[sym] = logo
+}
+
+func TestSearchAddsLogosLearnedAfterTheResultsWereCached(t *testing.T) {
+	const aaplLogo = "https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png"
+	for name, provider := range map[string]func(*logoFake) Provider{
+		"single vendor": func(l *logoFake) Provider { return l },
+		"composite": func(l *logoFake) Provider {
+			return Composite{QuoteSource: l, BarSource: namedFake{&fakeProvider{}, "twelvedata"}}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			vendor := &logoFake{namedFake: namedFake{&fakeProvider{}, "finnhub"}, logos: map[Symbol]string{}}
+			s := newTestService(provider(vendor), &testClock{t: time.Unix(0, 0)})
+			ctx := context.Background()
+
+			first, err := s.Search(ctx, "a")
+			if err != nil || len(first) != 3 || first[0].Logo != "" || first[2].Logo != msftLogo {
+				t.Fatalf("unknown logos are empty: %+v %v", first, err)
+			}
+			// The vendor's background lookups finish after the results were cached.
+			vendor.learn("AAPL", aaplLogo)
+			vendor.learn("SPY", "")
+			vendor.learn("MSFT", "https://example.com/other.png")
+			got, err := s.Search(ctx, "a")
+			if err != nil || got[0].Logo != aaplLogo || got[1].Logo != "" || got[2].Logo != msftLogo {
+				t.Fatalf("empty logos should be filled in from the vendor, others kept: %+v %v", got, err)
+			}
+			if vendor.searches.Load() != 1 {
+				t.Fatalf("the results should come from the cache; searches = %d", vendor.searches.Load())
+			}
+			if cached, _ := s.searches.Get("search:a"); cached.Value[0].Logo != "" || first[0].Logo != "" {
+				t.Fatal("the cached results must not be changed")
+			}
+		})
 	}
 }
 

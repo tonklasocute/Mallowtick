@@ -3,9 +3,13 @@ package finnhub
 import (
 	"context"
 	"errors"
+	"fmt"
+	"maps"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -39,6 +43,7 @@ func newTestClient(t *testing.T, routes map[string]http.HandlerFunc, callsPerMin
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(c.fills.wg.Wait) // background logo lookups end before the server closes
 	return c
 }
 
@@ -164,6 +169,156 @@ func TestFundamentalsMapProfileAndMetrics(t *testing.T) {
 	}
 }
 
+// together returns one handler per body. Each waits until all of them have been
+// called before it answers, so calls sent one after the other fail.
+func together(t *testing.T, bodies ...string) []http.HandlerFunc {
+	var arrived atomic.Int32
+	all := make(chan struct{})
+	hs := make([]http.HandlerFunc, len(bodies))
+	for i, body := range bodies {
+		hs[i] = func(w http.ResponseWriter, r *http.Request) {
+			if arrived.Add(1) == int32(len(bodies)) {
+				close(all)
+			}
+			select {
+			case <-all:
+				_, _ = w.Write([]byte(body))
+			case <-time.After(2 * time.Second):
+				t.Errorf("%s was not sent alongside the other calls", r.URL.Path)
+				status(http.StatusGatewayTimeout, `{"error":"alone"}`)(w, r)
+			}
+		}
+	}
+	return hs
+}
+
+// receive waits for a value from ch, failing the test after a deadline.
+func receive[V any](t *testing.T, ch <-chan V) V {
+	t.Helper()
+	select {
+	case v := <-ch:
+		return v
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out")
+		var zero V
+		return zero
+	}
+}
+
+func TestQuoteAndProfileAreFetchedTogether(t *testing.T) {
+	h := together(t, aaplQuote, `{"name":"Apple Inc","exchange":"NASDAQ NMS - GLOBAL MARKET","currency":"USD"}`)
+	c := newTestClient(t, map[string]http.HandlerFunc{"/quote": h[0], "/stock/profile2": h[1]}, 60)
+	got, err := c.Quotes(context.Background(), []market.Symbol{"AAPL"})
+	if q := got["AAPL"]; err != nil || q.Price != 344.77 || q.Name != "Apple Inc" || q.Exchange != "NASDAQ" {
+		t.Fatalf("unexpected quote: %+v %v", q, err)
+	}
+}
+
+func TestFailedProfileStillGivesTheQuote(t *testing.T) {
+	var profiles atomic.Int32
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/quote": respond(aaplQuote),
+		"/stock/profile2": func(w http.ResponseWriter, r *http.Request) {
+			profiles.Add(1)
+			status(http.StatusBadGateway, `{"error":"upstream"}`)(w, r)
+		},
+	}, 60)
+	for range 2 {
+		got, err := c.Quotes(context.Background(), []market.Symbol{"AAPL"})
+		if q := got["AAPL"]; err != nil || q.Price != 344.77 || q.Name != "" || q.Currency != "USD" {
+			t.Fatalf("the quote should come without a name, in USD: %+v %v", q, err)
+		}
+	}
+	if profiles.Load() != 2 {
+		t.Fatalf("a failed profile should not be cached; calls = %d", profiles.Load())
+	}
+}
+
+func TestQuoteBooksItsCallBeforeTheProfile(t *testing.T) {
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/quote": respond(aaplQuote),
+		"/stock/profile2": func(w http.ResponseWriter, r *http.Request) {
+			t.Error("the profile took the only call, which the quote needed")
+			respond(`{"name":"Apple Inc"}`)(w, r)
+		},
+	}, 1)
+	got, err := c.Quotes(context.Background(), []market.Symbol{"AAPL"})
+	if q := got["AAPL"]; err != nil || q.Price != 344.77 || q.Currency != "USD" {
+		t.Fatalf("with room for one call the quote should get it: %+v %v", q, err)
+	}
+}
+
+const rklbMetrics = `{"metric":{"52WeekHigh":150.9999,"52WeekLow":37.57,"marketCapitalization":32209.104}}`
+
+func TestFundamentalsFetchProfileAndMetricsTogether(t *testing.T) {
+	h := together(t, `{"name":"Rocket Lab Corp","finnhubIndustry":"Aerospace & Defense"}`, rklbMetrics)
+	c := newTestClient(t, map[string]http.HandlerFunc{"/stock/profile2": h[0], "/stock/metric": h[1]}, 60)
+	f, err := c.Fundamentals(context.Background(), "RKLB")
+	if err != nil || f.Industry != "Aerospace & Defense" || f.Metrics.FiftyTwoWeekHigh == nil ||
+		*f.Metrics.FiftyTwoWeekHigh != 150.9999 {
+		t.Fatalf("unexpected fundamentals: %+v %v", f, err)
+	}
+}
+
+func TestOneMetricCallServesRangeAndFundamentals(t *testing.T) {
+	var metricCalls atomic.Int32
+	metricIn, profileIn, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	profileArrived := sync.OnceFunc(func() { close(profileIn) })
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/stock/profile2": func(w http.ResponseWriter, r *http.Request) {
+			profileArrived()
+			respond(`{"name":"Rocket Lab Corp","finnhubIndustry":"Aerospace & Defense"}`)(w, r)
+		},
+		"/stock/metric": func(w http.ResponseWriter, r *http.Request) {
+			if metricCalls.Add(1) > 1 {
+				t.Error("a second /stock/metric call was sent for the same symbol")
+			} else {
+				close(metricIn)
+			}
+			select {
+			case <-release:
+			case <-time.After(5 * time.Second):
+				t.Error("the metric call was never released")
+			}
+			respond(rklbMetrics)(w, r)
+		},
+	}, 60)
+	ctx := context.Background()
+
+	// The quote's range lookup starts the call...
+	first, leave := context.WithCancel(ctx)
+	rangeErr := make(chan error, 1)
+	go func() {
+		_, err := c.FiftyTwoWeek(first, "RKLB")
+		rangeErr <- err
+	}()
+	receive(t, metricIn)
+	// ...and Fundamentals joins it before sending its profile request.
+	funds := make(chan market.Fundamentals, 1)
+	go func() {
+		f, err := c.Fundamentals(ctx, "RKLB")
+		if err != nil {
+			t.Error(err)
+		}
+		funds <- f
+	}()
+	receive(t, profileIn)
+	// The first caller leaving does not cancel the call for the other.
+	leave()
+	if err := receive(t, rangeErr); !errors.Is(err, context.Canceled) {
+		t.Fatalf("the cancelled caller should stop waiting: %v", err)
+	}
+	close(release)
+	f := receive(t, funds)
+	if f.Industry != "Aerospace & Defense" || f.Metrics.MarketCap == nil || *f.Metrics.MarketCap != 32209.104e6 {
+		t.Fatalf("unexpected fundamentals: %+v", f)
+	}
+	r, err := c.FiftyTwoWeek(ctx, "RKLB")
+	if err != nil || r == nil || r.High != 150.9999 || metricCalls.Load() != 1 {
+		t.Fatalf("the shared call should have cached the range: %+v %v, calls = %d", r, err, metricCalls.Load())
+	}
+}
+
 func TestPerformanceSkipsProfiles(t *testing.T) {
 	// No /stock/profile2 or /search route: newTestClient fails the test if they are called.
 	c := newTestClient(t, map[string]http.HandlerFunc{
@@ -260,6 +415,9 @@ func TestEarningsHistoryAndRecommendationsAreNewestFirst(t *testing.T) {
 func TestUnknownSymbolIsAbsent(t *testing.T) {
 	c := newTestClient(t, map[string]http.HandlerFunc{
 		"/quote": respond(`{"c":0,"d":null,"dp":null,"h":0,"l":0,"o":0,"pc":0,"t":0}`),
+		// The profile is asked for alongside the quote, so it is sent anyway.
+		"/stock/profile2": respond(`{}`),
+		"/search":         respond(`{"result":[]}`),
 	}, 60)
 	got, err := c.Quotes(context.Background(), []market.Symbol{"ZZZZ"})
 	if err != nil || len(got) != 0 {
@@ -289,7 +447,10 @@ func TestErrorMapping(t *testing.T) {
 		http.StatusBadGateway:      market.ErrUnavailable,
 	}
 	for code, want := range cases {
-		c := newTestClient(t, map[string]http.HandlerFunc{"/quote": status(code, `{"error":"nope"}`)}, 60)
+		c := newTestClient(t, map[string]http.HandlerFunc{
+			"/quote":          status(code, `{"error":"nope"}`),
+			"/stock/profile2": respond(`{"name":"Apple Inc"}`),
+		}, 60)
 		if _, err := c.Quotes(context.Background(), []market.Symbol{"AAPL"}); !errors.Is(err, want) {
 			t.Errorf("HTTP %d: got %v, want %v", code, err, want)
 		}
@@ -304,6 +465,7 @@ func TestProviderRateLimitStopsFurtherCalls(t *testing.T) {
 			w.WriteHeader(http.StatusTooManyRequests)
 			_, _ = w.Write([]byte(`{"error":"API limit reached."}`))
 		},
+		"/stock/profile2": respond(`{"name":"Apple Inc"}`),
 	}, 60)
 	ctx := context.Background()
 	_, _ = c.Quotes(ctx, []market.Symbol{"AAPL"})
@@ -360,30 +522,205 @@ func TestCleanLogoKeepsOnlyHTTPS(t *testing.T) {
 	}
 }
 
-func TestSearchResultsGetLogosAndProfilesAreFetchedOnce(t *testing.T) {
-	var profiles atomic.Int32
+// profiles serves /stock/profile2 with the given logos (an ETF's empty profile
+// for other symbols) and counts the calls per symbol.
+type profiles struct {
+	logos   map[string]string
+	entered chan string   // when set, gets each call's symbol as it arrives
+	release chan struct{} // when set, calls answer once it is closed
+	mu      sync.Mutex
+	calls   map[string]int
+}
+
+func (p *profiles) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	sym := r.URL.Query().Get("symbol")
+	p.mu.Lock()
+	if p.calls == nil {
+		p.calls = map[string]int{}
+	}
+	p.calls[sym]++
+	p.mu.Unlock()
+	if p.entered != nil {
+		p.entered <- sym
+	}
+	if p.release != nil {
+		select {
+		case <-p.release:
+		case <-r.Context().Done():
+			return
+		}
+	}
+	if logo, ok := p.logos[sym]; ok {
+		_, _ = fmt.Fprintf(w, `{"name":"%s Inc","logo":"%s"}`, sym, logo)
+		return
+	}
+	_, _ = w.Write([]byte(`{}`))
+}
+
+func (p *profiles) counts() map[string]int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return maps.Clone(p.calls)
+}
+
+// hold makes p's calls wait until release runs. Tests also run release in a
+// cleanup registered after newTestClient, so that it runs before the client's
+// cleanup waits for the lookups.
+func (p *profiles) hold() (release func()) {
+	p.entered, p.release = make(chan string, 20), make(chan struct{})
+	return sync.OnceFunc(func() { close(p.release) })
+}
+
+// searchResults is a /search answer listing symbols as common stocks.
+func searchResults(symbols ...string) http.HandlerFunc {
+	rows := make([]string, len(symbols))
+	for i, s := range symbols {
+		rows[i] = fmt.Sprintf(`{"description":"%s Inc","symbol":"%s","type":"Common Stock"}`, s, s)
+	}
+	return respond(`{"result":[` + strings.Join(rows, ",") + `]}`)
+}
+
+// searchNow runs a search and fails the test unless it answers promptly.
+func searchNow(t *testing.T, c *Client, query string) []market.Instrument {
+	t.Helper()
+	type result struct {
+		found []market.Instrument
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		found, err := c.SearchSymbols(context.Background(), query, 10)
+		done <- result{found, err}
+	}()
+	select {
+	case r := <-done:
+		if r.err != nil {
+			t.Fatal(r.err)
+		}
+		return r.found
+	case <-time.After(5 * time.Second):
+		t.Fatal("the search waited for its logos")
+		return nil
+	}
+}
+
+// receiveN takes n values from ch, failing the test if they do not come.
+func receiveN(t *testing.T, ch <-chan string, n int) []string {
+	t.Helper()
+	got := make([]string, 0, n)
+	deadline := time.After(5 * time.Second)
+	for len(got) < n {
+		select {
+		case s := <-ch:
+			got = append(got, s)
+		case <-deadline:
+			t.Fatalf("got %v, want %d values", got, n)
+		}
+	}
+	return got
+}
+
+func TestSearchAnswersBeforeItsLogosAndTheNextSearchHasThem(t *testing.T) {
+	p := &profiles{logos: map[string]string{"AAPL": aaplLogo}}
+	release := p.hold()
 	c := newTestClient(t, map[string]http.HandlerFunc{
 		"/search": respond(`{"result":[` +
 			`{"description":"Apple Inc.","symbol":"AAPL","type":"Common Stock"},` +
 			`{"description":"SS SPDR S&P 500 ETF TRUST-US","symbol":"SPY","type":"ETP"}]}`),
-		"/stock/profile2": func(w http.ResponseWriter, r *http.Request) {
-			profiles.Add(1)
-			if r.URL.Query().Get("symbol") == "AAPL" {
-				_, _ = w.Write([]byte(`{"name":"Apple Inc","logo":"` + aaplLogo + `"}`))
-				return
-			}
-			_, _ = w.Write([]byte(`{}`)) // ETFs have no profile
-		},
+		"/stock/profile2": p.ServeHTTP,
 	}, 60)
-	ctx := context.Background()
+	t.Cleanup(release)
+
+	// The profile calls are held, so the search must answer without them.
+	got := searchNow(t, c, "apple")
+	if len(got) != 2 || got[0].Logo != "" || got[1].Logo != "" {
+		t.Fatalf("logos are not known yet: %+v", got)
+	}
+	receiveN(t, p.entered, 2)
+	release()
+	c.fills.wg.Wait()
+
 	for range 2 {
-		got, err := c.SearchSymbols(ctx, "apple", 10)
-		if err != nil || len(got) != 2 || got[0].Logo != aaplLogo || got[1].Logo != "" {
-			t.Fatalf("AAPL should have a logo and the ETF none: %+v %v", got, err)
+		got := searchNow(t, c, "apple")
+		if len(got) != 2 || got[0].Logo != aaplLogo || got[1].Logo != "" {
+			t.Fatalf("AAPL should now have a logo and the ETF none: %+v", got)
 		}
 	}
-	if profiles.Load() != 2 {
-		t.Fatalf("each profile should be fetched once, ETF included; calls = %d", profiles.Load())
+	c.fills.wg.Wait()
+	if want := map[string]int{"AAPL": 1, "SPY": 1}; !maps.Equal(p.counts(), want) {
+		t.Fatalf("each profile should be fetched once, ETF included; calls = %v", p.counts())
+	}
+}
+
+func TestSearchTakesKnownLogosFromTheCache(t *testing.T) {
+	p := &profiles{}
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/search":         searchResults("AAPL", "SPY", "MSFT"),
+		"/stock/profile2": p.ServeHTTP,
+	}, 60)
+	c.logos.Set("AAPL", aaplLogo)
+	c.logos.Set("SPY", "") // known to have none
+	got := searchNow(t, c, "a")
+	if len(got) != 3 || got[0].Logo != aaplLogo || got[1].Logo != "" || got[2].Logo != "" {
+		t.Fatalf("the cached logo should be attached: %+v", got)
+	}
+	c.fills.wg.Wait()
+	if want := map[string]int{"MSFT": 1}; !maps.Equal(p.counts(), want) {
+		t.Fatalf("only the unknown logo should be looked up; calls = %v", p.counts())
+	}
+}
+
+func TestBackgroundLogosAreBoundedAndLookedUpOnce(t *testing.T) {
+	symbols := []string{"AAPL", "AMZN", "AMD", "ABNB", "ADBE", "ACN", "ABT", "AVGO"}
+	p := &profiles{}
+	release := p.hold()
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/search":         searchResults(symbols...),
+		"/stock/profile2": p.ServeHTTP,
+	}, 60)
+	t.Cleanup(release)
+
+	searchNow(t, c, "a")
+	receiveN(t, p.entered, min(parallelCalls, maxLogoFills))
+	// Another search for the same symbols while those lookups are held.
+	searchNow(t, c, "ab")
+	release()
+	c.fills.wg.Wait()
+
+	want := map[string]int{}
+	for _, s := range symbols[:maxLogoFills] {
+		want[s] = 1
+	}
+	if !maps.Equal(p.counts(), want) {
+		t.Fatalf("each of the first %d results should be looked up once; calls = %v", maxLogoFills, p.counts())
+	}
+}
+
+func TestBackgroundLogosNeedRoomToSpare(t *testing.T) {
+	// The search spends one call, leaving one less than the headroom.
+	p := &profiles{logos: map[string]string{"AAPL": aaplLogo}}
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/search":         searchResults("AAPL"),
+		"/stock/profile2": p.ServeHTTP,
+	}, logoHeadroom)
+	searchNow(t, c, "apple")
+	c.fills.wg.Wait()
+	if len(p.counts()) != 0 {
+		t.Fatalf("a logo must not take the budget's last room; calls = %v", p.counts())
+	}
+	if _, busy := c.fills.running.Load(market.Symbol("AAPL")); busy {
+		t.Fatal("a skipped lookup should be left for a later search")
+	}
+
+	// With one call more, the same search looks the logo up.
+	roomy := newTestClient(t, map[string]http.HandlerFunc{
+		"/search":         searchResults("AAPL"),
+		"/stock/profile2": p.ServeHTTP,
+	}, logoHeadroom+1)
+	searchNow(t, roomy, "apple")
+	roomy.fills.wg.Wait()
+	if logo, known := roomy.CachedLogo("AAPL"); !known || logo != aaplLogo {
+		t.Fatalf("with room to spare the logo should be looked up: %q %v", logo, known)
 	}
 }
 
@@ -395,6 +732,10 @@ func TestSearchStillAnswersWhenLogosCannotBeFetched(t *testing.T) {
 	got, err := c.SearchSymbols(context.Background(), "apple", 10)
 	if err != nil || len(got) != 1 || got[0].Symbol != "AAPL" || got[0].Logo != "" {
 		t.Fatalf("a failed profile call must only cost the logo: %+v %v", got, err)
+	}
+	c.fills.wg.Wait()
+	if _, known := c.CachedLogo("AAPL"); known {
+		t.Fatal("a failed lookup should not be cached, so a later search tries again")
 	}
 }
 

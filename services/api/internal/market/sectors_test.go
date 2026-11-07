@@ -132,6 +132,101 @@ func TestSectorsReuseTheOverviewsQuote(t *testing.T) {
 	}
 }
 
+// fullSectorsFake knows SPY and every sector ETF, so no symbol is refetched for
+// being missing. open is the market state its quotes report.
+func fullSectorsFake(open *bool) *sectorsFake {
+	quotes, returns := map[Symbol]Quote{}, map[Symbol]PriceReturns{}
+	add := func(sym Symbol) {
+		q := quote(sym, 100, true)
+		q.IsMarketOpen, q.ChangePercent = open, f64(1)
+		quotes[sym], returns[sym] = q, PriceReturns{}
+	}
+	add(SectorBenchmark)
+	for _, sec := range Sectors {
+		add(sec.Symbol)
+	}
+	return newSectorsFake(quotes, returns, nil)
+}
+
+func TestSectorDayChangesAreKeptFiveMinutes(t *testing.T) {
+	clk := &testClock{t: time.Date(2026, 10, 27, 14, 0, 0, 0, time.UTC)}
+	vendor := fullSectorsFake(boolPtr(true))
+	vendor.quotes["AAPL"] = quote("AAPL", 189.32, true)
+	s := newTestService(Composite{QuoteSource: vendor, BarSource: &fakeProvider{}}, clk)
+	ctx := context.Background()
+	if _, err := s.Sectors(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Quote(ctx, "AAPL"); err != nil {
+		t.Fatal(err)
+	}
+	returnCalls := vendor.returnCalls.Load()
+
+	// Well past QuoteTTL: the day changes are still cached, the main quote is not.
+	clk.advance(sectorQuoteTTL - time.Second)
+	if _, err := s.Sectors(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if vendor.dayCalls.Load() != 1 {
+		t.Fatalf("day changes should be kept %s; day-change calls = %d", sectorQuoteTTL, vendor.dayCalls.Load())
+	}
+	if _, err := s.Quote(ctx, "AAPL"); err != nil || vendor.quoteCalls.Load() != 2 {
+		t.Fatalf("the main quote cache should keep QuoteTTL; quote calls = %d, err = %v", vendor.quoteCalls.Load(), err)
+	}
+
+	// Then they are fetched again; the longer returns stay cached.
+	xlk := vendor.quotes["XLK"]
+	xlk.ChangePercent = f64(-2)
+	vendor.quotes["XLK"] = xlk
+	clk.advance(2 * time.Second)
+	r, err := s.Sectors(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vendor.dayCalls.Load() != 2 {
+		t.Fatalf("expired day changes should be refetched; day-change calls = %d", vendor.dayCalls.Load())
+	}
+	i := slices.IndexFunc(r.Sectors, func(p SectorPerformance) bool { return p.Symbol == "XLK" })
+	if i < 0 || *r.Sectors[i].Returns.Day != -2 {
+		t.Fatalf("XLK should show the refetched change: %+v", r.Sectors)
+	}
+	if vendor.returnCalls.Load() != returnCalls {
+		t.Fatalf("returns should stay cached for %s; calls %d -> %d", fundamentalsTTL, returnCalls, vendor.returnCalls.Load())
+	}
+}
+
+func TestClosedMarketKeepsSectorDayChangesUntilOpen(t *testing.T) {
+	clk := &testClock{t: time.Unix(0, 0)}
+	// Finnhub's quotes carry no market state; it comes from the cached status.
+	vendor := fullSectorsFake(nil)
+	bars := &fakeProvider{status: closedFor(10 * time.Hour)}
+	s := newTestService(Composite{QuoteSource: vendor, BarSource: bars}, clk)
+	ctx := context.Background()
+	if _, err := s.MarketStatus(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Sectors(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	clk.advance(9 * time.Hour)
+	if _, err := s.Sectors(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if vendor.dayCalls.Load() != 1 {
+		t.Fatalf("closed-market day changes should stay cached until the open; calls = %d", vendor.dayCalls.Load())
+	}
+
+	clk.advance(2 * time.Hour)
+	bars.status = &MarketStatus{Exchange: "XNYS", IsOpen: true, ClosesInSeconds: int64Ptr(6 * 3600)}
+	if _, err := s.Sectors(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if vendor.dayCalls.Load() != 2 {
+		t.Fatalf("day changes should be refetched once the market opens; calls = %d", vendor.dayCalls.Load())
+	}
+}
+
 func TestSectorsFailWhenNothingResolves(t *testing.T) {
 	vendor := newSectorsFake(nil, nil, ErrUnavailable)
 	s := newTestService(Composite{QuoteSource: vendor, BarSource: &fakeProvider{}}, &testClock{t: time.Unix(0, 0)})

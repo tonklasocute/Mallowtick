@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"github.com/tonklasocute/mallowtick/services/api/internal/cache"
 	"github.com/tonklasocute/mallowtick/services/api/internal/market"
 	"github.com/tonklasocute/mallowtick/services/api/internal/ratebudget"
@@ -31,6 +33,10 @@ const (
 	// infoTTL keeps company names, exchanges and 52-week ranges, which change
 	// rarely, so a quote costs one call once they are known.
 	infoTTL = 24 * time.Hour
+	// sharedTimeout bounds a shared call once it no longer follows the first
+	// caller's cancellation: room in the budget, the request, and for an ETF's
+	// profile the name search after it.
+	sharedTimeout = 30 * time.Second
 )
 
 // Config configures the client.
@@ -62,10 +68,15 @@ type Client struct {
 	// logos holds the logo URL per symbol, including "" for symbols without one,
 	// so search results can show logos without fetching whole profiles twice.
 	logos *cache.TTL[string]
+	// fills are the logo lookups for search results, done in the background.
+	fills logoFills
 	// searchSlot lets one /search call run at a time. Finnhub answers 429 to a
 	// burst of searches well inside the per-minute allowance (checked 2026-10-27:
 	// 6 at once gave 2 × 429, 6 in a row none), and a 429 marks the whole budget spent.
 	searchSlot chan struct{}
+	// calls shares a profile or /stock/metric call between concurrent callers
+	// (see share).
+	calls singleflight.Group
 }
 
 var (
@@ -119,13 +130,25 @@ func (c *Client) Configured() bool { return true }
 // get spends one call from the budget, performs a GET, and decodes the JSON
 // body into out.
 func (c *Client) get(ctx context.Context, path string, params url.Values, out any) error {
+	if err := c.spend(ctx); err != nil {
+		return err
+	}
+	return c.send(ctx, path, params, out)
+}
+
+// spend books one call from the budget, waiting up to maxWait for room.
+func (c *Client) spend(ctx context.Context) error {
 	if err := c.budget.Spend(ctx, 1, c.maxWait); err != nil {
 		if errors.Is(err, ratebudget.ErrNoRoom) {
 			return fmt.Errorf("%w: %w", market.ErrRateLimited, err)
 		}
 		return err
 	}
+	return nil
+}
 
+// send is get for a call already booked with spend.
+func (c *Client) send(ctx context.Context, path string, params url.Values, out any) error {
 	u := c.baseURL.JoinPath(path)
 	u.RawQuery = params.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
@@ -182,4 +205,31 @@ func mapError(code int, message string) error {
 		sentinel = market.ErrUnavailable
 	}
 	return fmt.Errorf("%w (finnhub %d: %s)", sentinel, code, message)
+}
+
+// share starts fetch, or joins the call already running under key, and returns
+// a function that waits for the result. A Stock Detail page asks for the quote
+// and the fundamentals at once, and both need the profile and /stock/metric.
+// Like market.Service.do, the call is detached from the first caller's
+// cancellation so the others still get a result, and bounded by sharedTimeout.
+// Joining happens before share returns, so a caller can start other calls next.
+func share[V any](ctx context.Context, c *Client, key string, fetch func(context.Context) (V, error)) func() (V, error) {
+	ch := c.calls.DoChan(key, func() (any, error) {
+		fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sharedTimeout)
+		defer cancel()
+		v, err := fetch(fctx)
+		return v, err
+	})
+	return func() (V, error) {
+		var zero V
+		select {
+		case r := <-ch:
+			if r.Err != nil {
+				return zero, r.Err
+			}
+			return r.Val.(V), nil
+		case <-ctx.Done():
+			return zero, ctx.Err()
+		}
+	}
 }

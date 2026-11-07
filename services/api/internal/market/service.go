@@ -284,13 +284,18 @@ func fixedTTL[V any](d time.Duration) func(V) time.Duration {
 	return func(V) time.Duration { return d }
 }
 
-// Search finds US instruments by ticker or company name.
+// Search finds US instruments by ticker or company name. Results are cached for
+// a day, often before the vendor knows their logos, so the logos it has looked
+// up since are filled in on the way out.
 func (s *Service) Search(ctx context.Context, query string) ([]Instrument, error) {
 	key := "search:" + strings.ToLower(query)
 	e, _, err := load(ctx, s, s.searches, key, fixedTTL[[]Instrument](searchTTL), func(fctx context.Context) ([]Instrument, error) {
 		return s.provider.SearchSymbols(fctx, query, searchLimit)
 	})
-	return e.Value, err
+	if err != nil {
+		return nil, err
+	}
+	return withCachedLogos(e.Value, s.source(KindSearch)), nil
 }
 
 // Instrument resolves a symbol's descriptive metadata.
@@ -395,13 +400,13 @@ type quoteFetch struct {
 // resolveQuotes resolves each symbol from cache or one provider request for all
 // misses. It returns per-symbol errors for symbols it could not resolve.
 func (s *Service) resolveQuotes(ctx context.Context, symbols []Symbol) ([]QuoteResult, map[Symbol]error) {
-	return s.resolveQuotesFrom(ctx, symbols, s.quotes, "quotes:", s.provider.Quotes)
+	return s.resolveQuotesFrom(ctx, symbols, s.quotes, "quotes:", s.quoteTTL, s.provider.Quotes)
 }
 
-// resolveQuotesFrom is resolveQuotes over another cache and fetch, e.g. quotes
-// without names, which must not land in the main quote cache.
+// resolveQuotesFrom is resolveQuotes over another cache, TTL and fetch, e.g.
+// quotes without names, which must not land in the main quote cache.
 func (s *Service) resolveQuotesFrom(ctx context.Context, symbols []Symbol, quotes *cache.TTL[Quote], keyPrefix string,
-	fetch func(context.Context, []Symbol) (map[Symbol]Quote, error)) ([]QuoteResult, map[Symbol]error) {
+	ttl func(Quote) time.Duration, fetch func(context.Context, []Symbol) (map[Symbol]Quote, error)) ([]QuoteResult, map[Symbol]error) {
 	results := make(map[Symbol]QuoteResult, len(symbols))
 	staleEntries := make(map[Symbol]cache.Entry[Quote])
 	var misses []Symbol
@@ -435,7 +440,7 @@ func (s *Service) resolveQuotesFrom(ctx context.Context, symbols []Symbol, quote
 					// already cached (never fetched for this) so labels and TTLs know.
 					q.IsMarketOpen = s.cachedMarketOpen()
 				}
-				f.stored[sym] = quotes.SetWithTTL(string(sym), q, s.quoteTTL(q))
+				f.stored[sym] = quotes.SetWithTTL(string(sym), q, ttl(q))
 			}
 			return f, nil
 		})
@@ -469,6 +474,23 @@ func (s *Service) resolveQuotesFrom(ctx context.Context, symbols []Symbol, quote
 
 // Quote returns the latest quote for one symbol.
 func (s *Service) Quote(ctx context.Context, symbol Symbol) (QuoteResult, error) {
+	// A vendor whose quotes lack the 52-week range looks it up with a call of its
+	// own. Start it with the quote so a cold quote waits for the slower call, not
+	// for both in turn. It ends with this request.
+	var ranges chan *Range52
+	if rp, ok := s.source(KindQuotes).(RangeProvider); ok {
+		rctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		ranges = make(chan *Range52, 1)
+		go func() {
+			// Optional extra: a failure leaves the range unknown, not the quote.
+			r, err := rp.FiftyTwoWeek(rctx, symbol)
+			if err != nil {
+				r = nil
+			}
+			ranges <- r
+		}()
+	}
 	got, errs := s.resolveQuotes(ctx, []Symbol{symbol})
 	if err := errs[symbol]; err != nil {
 		return QuoteResult{}, err
@@ -477,12 +499,11 @@ func (s *Service) Quote(ctx context.Context, symbol Symbol) (QuoteResult, error)
 	if q.Volume == nil {
 		q.Volume = s.sessionVolume(symbol, q.AsOf)
 	}
-	if q.FiftyTwoWeek == nil {
-		if rp, ok := s.source(KindQuotes).(RangeProvider); ok {
-			// Optional extra: a failure leaves the range unknown, not the quote.
-			if r, err := rp.FiftyTwoWeek(ctx, symbol); err == nil {
-				q.FiftyTwoWeek = r
-			}
+	if q.FiftyTwoWeek == nil && ranges != nil {
+		select {
+		case r := <-ranges:
+			q.FiftyTwoWeek = r
+		case <-ctx.Done():
 		}
 	}
 	return q, nil
