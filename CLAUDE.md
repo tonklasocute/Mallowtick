@@ -228,6 +228,15 @@ The project is worked on from both a Windows PC and a Mac.
   `corepack pnpm --filter @mallowtick/web dev`.
 - API: `go run ./cmd/api` in `services/api`, with the settings in the environment (see above).
 - Git Bash `sed -i` converts CRLF files to LF. Edit with the Edit tool or `perl -pi` instead.
+- `go test -race` needs cgo and there is no gcc; golangci-lint isn't installed. Both run on an
+  LF export of a commit (plain `git archive` applies `core.autocrlf` and gives CRLF again):
+  - `git -c core.autocrlf=false archive HEAD services/api | tar -x -C <dir>`
+  - race tests in Docker: `MSYS_NO_PATHCONV=1 docker run --rm -v "<dir>/services/api:/src"
+    -w /src golang:1.27 go test -race ./...`
+  - lint: `GOTOOLCHAIN=go1.27.2 GOBIN=<bin> go install
+    github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`, then
+    `GOTOOLCHAIN=go1.27.2 <bin>/golangci-lint run ./...` in `<dir>/services/api`. A
+    golangci-lint or staticcheck built with an older Go can't load this module (go 1.27).
 
 ## Known issues
 
@@ -241,7 +250,13 @@ The project is worked on from both a Windows PC and a Mac.
   `tr -d '\r' < file.go | gofmt -d`.
 - Unverified: whether Twelve Data's daily bar for today holds the full-market volume right
   after the close. During the session it holds the same partial volume as the intraday
-  bars, and closed-market candles are cached until the next open. If Stock Detail shows a
-  very low "ปริมาณซื้อขาย" in the evening, that is why. Check once after a close.
+  bars (the chart shows `null` instead, see Price chart). The daily series is refetched on
+  the first request after the close and then kept until the next open, so if Stock Detail
+  shows a very low "ปริมาณซื้อขาย" in the evening, that bar was still partial. Check once
+  after a close.
+- Unverified with the real API: the session's daily bar rebuilt from the Finnhub quote while
+  the market is open (unit tests only; added on a Saturday). Check during a session with
+  `LOG_LEVEL=debug`: 1M/3M/1Y should show today's price, `volume: null` on the last bar,
+  `freshness.provider` `twelvedata+finnhub`, and no `/time_series` call until the close.
 - ETF names from Finnhub search are upper case with a vendor prefix (e.g. "SS SPDR S&P
   500 ETF TRUST"), because Finnhub has no profile for ETFs.
