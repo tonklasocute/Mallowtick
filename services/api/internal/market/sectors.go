@@ -39,6 +39,17 @@ const SectorBenchmark Symbol = "SPY"
 // sectorFetches bounds concurrent fundamentals lookups for the sector list.
 const sectorFetches = 4
 
+// sectorQuoteTTL is how long the sectors' day changes are kept while the market
+// is open. A heatmap needs no minute-by-minute prices, and refetching its 12
+// ETFs every QuoteTTL took a fifth of Finnhub's 60 calls a minute.
+const sectorQuoteTTL = 5 * time.Minute
+
+// sectorTTL keeps a sector's day change at least sectorQuoteTTL, and like other
+// quotes (until the next open) while the market is closed.
+func (s *Service) sectorTTL(q Quote) time.Duration {
+	return max(s.quoteTTL(q), sectorQuoteTTL)
+}
+
 // PriceReturns are price returns in percent per period, nil when the vendor
 // reported none. 1d is the latest session's change; the rest come from the
 // vendor's daily-close returns (1w is five sessions, 3m is 13 weeks).
@@ -75,8 +86,8 @@ type SectorsResult struct {
 // whose quotes cost a credit per symbol. It skips the name and profile lookups
 // of quotes and fundamentals, which on a cold start would add two calls per
 // ETF and push the first Discover load past 60 calls a minute. That leaves 11
-// quote calls per QuoteTTL (SPY comes from the quote cache when the overview
-// has it) and 12 metric calls per fundamentalsTTL.
+// quote calls per sectorQuoteTTL (SPY comes from the quote cache when the
+// overview has it) and 12 metric calls per fundamentalsTTL.
 func (s *Service) Sectors(ctx context.Context) (SectorsResult, error) {
 	pp, ok := s.source(KindFundamentals).(PerformanceProvider)
 	if !ok {
@@ -97,7 +108,7 @@ func (s *Service) Sectors(ctx context.Context) (SectorsResult, error) {
 			misses = append(misses, sym)
 		}
 	}
-	quotes, quoteErrs := s.resolveQuotesFrom(ctx, misses, s.dayChanges, "daychanges:", pp.DayChanges)
+	quotes, quoteErrs := s.resolveQuotesFrom(ctx, misses, s.dayChanges, "daychanges:", s.sectorTTL, pp.DayChanges)
 	for _, q := range quotes {
 		bySymbol[Symbol(q.Symbol)] = q
 	}

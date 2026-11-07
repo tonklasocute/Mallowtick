@@ -79,9 +79,43 @@ func cleanName(s string) string {
 // the name failed, before the name is looked up again.
 const nameRetry = 2 * time.Minute
 
-// logoWait bounds how long a search waits for logos. They are decoration: past
-// this, or when the call budget is spent, results go out without them.
-const logoWait = 2 * time.Second
+// Search results take logos from the cache only. A /stock/profile2 call takes
+// as long as the search itself (about 400 ms from Thailand), and looking up
+// every result's logo first spent up to 10 of the 60 calls a minute, so the
+// missing ones are looked up in the background for the next search or screen.
+const (
+	// maxLogoFills is how many of a search's first results, the ones on
+	// screen, may have their logo looked up.
+	maxLogoFills = 5
+	// logoHeadroom is how many calls must be free before a background lookup
+	// is sent, so logos never wait for the budget or take the room that quotes
+	// and searches need.
+	logoHeadroom = 10
+	// logoFillTimeout bounds one search's background lookups.
+	logoFillTimeout = 10 * time.Second
+)
+
+// logoFills tracks the background logo lookups.
+type logoFills struct {
+	// running holds the symbols being looked up, so concurrent searches look
+	// each one up once.
+	running sync.Map
+	wg      sync.WaitGroup // tests wait on it
+}
+
+var _ market.LogoSource = (*Client)(nil)
+
+// CachedLogo implements market.LogoSource from the logo and profile caches,
+// without calling Finnhub.
+func (c *Client) CachedLogo(sym market.Symbol) (string, bool) {
+	if e, state := c.logos.Get(string(sym)); state == cache.Fresh {
+		return e.Value, true
+	}
+	if e, state := c.info.Get(string(sym)); state == cache.Fresh {
+		return e.Value.Logo, true
+	}
+	return "", false
+}
 
 // cleanLogo keeps only an https URL; anything else is treated as no logo, so the
 // API never hands the browser a URL it should not load.
@@ -96,11 +130,8 @@ func cleanLogo(raw string) string {
 // logoFor returns the logo URL for symbol from the caches, or from one
 // /stock/profile2 call. Failures give "" and are not cached.
 func (c *Client) logoFor(ctx context.Context, sym market.Symbol) string {
-	if e, state := c.logos.Get(string(sym)); state == cache.Fresh {
-		return e.Value
-	}
-	if e, state := c.info.Get(string(sym)); state == cache.Fresh {
-		return e.Value.Logo
+	if logo, known := c.CachedLogo(sym); known {
+		return logo
 	}
 	var p struct {
 		Logo string `json:"logo"`
@@ -113,19 +144,36 @@ func (c *Client) logoFor(ctx context.Context, sym market.Symbol) string {
 	return logo
 }
 
-// attachLogos fills in found[i].Logo, a few calls at a time, within logoWait.
-func (c *Client) attachLogos(ctx context.Context, found []market.Instrument) {
-	lctx, cancel := context.WithTimeout(ctx, logoWait)
-	defer cancel()
-	var g errgroup.Group
-	g.SetLimit(parallelCalls)
-	for i := range found {
-		g.Go(func() error {
-			found[i].Logo = c.logoFor(lctx, market.Symbol(found[i].Symbol))
-			return nil
-		})
+// fillLogos looks up the logos of symbols in the background, a few calls at a
+// time. The lookups outlive the request, so they keep its values but not its
+// cancellation. A symbol another search is already looking up is skipped.
+func (c *Client) fillLogos(ctx context.Context, symbols []market.Symbol) {
+	var claimed []market.Symbol
+	for _, sym := range symbols {
+		if _, busy := c.fills.running.LoadOrStore(sym, struct{}{}); !busy {
+			claimed = append(claimed, sym)
+		}
 	}
-	_ = g.Wait()
+	if len(claimed) == 0 {
+		return
+	}
+	c.fills.wg.Go(func() {
+		fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), logoFillTimeout)
+		defer cancel()
+		var g errgroup.Group
+		g.SetLimit(parallelCalls)
+		for _, sym := range claimed {
+			g.Go(func() error {
+				defer c.fills.running.Delete(sym)
+				// Skipped logos are looked up by a later search with room to spare.
+				if c.budget.Available() >= logoHeadroom {
+					c.logoFor(fctx, sym)
+				}
+				return nil
+			})
+		}
+		_ = g.Wait()
+	})
 }
 
 // instrument returns cached name, exchange and currency for symbol. ETFs have
@@ -179,6 +227,68 @@ func (c *Client) instrument(ctx context.Context, sym market.Symbol) (instrumentI
 	return info, nil
 }
 
+// startProfile returns instrument's result for symbol, from the cache or from a
+// lookup shared with concurrent callers, which it starts before returning.
+func (c *Client) startProfile(ctx context.Context, sym market.Symbol) func() (instrumentInfo, error) {
+	if e, state := c.info.Get(string(sym)); state == cache.Fresh {
+		return func() (instrumentInfo, error) { return e.Value, nil }
+	}
+	return share(ctx, c, "profile:"+string(sym), func(fctx context.Context) (instrumentInfo, error) {
+		return c.instrument(fctx, sym)
+	})
+}
+
+// metrics holds the /stock/metric fields that FiftyTwoWeek, Fundamentals and
+// PriceReturns read. All three need metric=all, so one call serves them all.
+type metrics struct {
+	High             *float64 `json:"52WeekHigh"`
+	Low              *float64 `json:"52WeekLow"`
+	MarketCap        *float64 `json:"marketCapitalization"`
+	EnterpriseValue  *float64 `json:"enterpriseValue"`
+	PE               *float64 `json:"peTTM"`
+	PS               *float64 `json:"psTTM"`
+	PB               *float64 `json:"pbQuarterly"`
+	EPS              *float64 `json:"epsTTM"`
+	RevenueGrowthYoY *float64 `json:"revenueGrowthTTMYoy"`
+	RevenueGrowth5Y  *float64 `json:"revenueGrowth5Y"`
+	EPSGrowthYoY     *float64 `json:"epsGrowthTTMYoy"`
+	GrossMargin      *float64 `json:"grossMarginTTM"`
+	OperatingMargin  *float64 `json:"operatingMarginTTM"`
+	NetMargin        *float64 `json:"netProfitMarginTTM"`
+	ROE              *float64 `json:"roeTTM"`
+	CurrentRatio     *float64 `json:"currentRatioQuarterly"`
+	DebtToEquity     *float64 `json:"totalDebt/totalEquityQuarterly"`
+	DividendYield    *float64 `json:"dividendYieldIndicatedAnnual"`
+	PayoutRatio      *float64 `json:"payoutRatioTTM"`
+	Beta             *float64 `json:"beta"`
+	Return5D         *float64 `json:"5DayPriceReturnDaily"`
+	Return13W        *float64 `json:"13WeekPriceReturnDaily"`
+	ReturnYTD        *float64 `json:"yearToDatePriceReturnDaily"`
+	Return1Y         *float64 `json:"52WeekPriceReturnDaily"`
+	RelativeYTD      *float64 `json:"priceRelativeToS&P500Ytd"`
+	Relative1Y       *float64 `json:"priceRelativeToS&P50052Week"`
+	HighDate         string   `json:"52WeekHighDate"`
+	LowDate          string   `json:"52WeekLowDate"`
+}
+
+// startMetrics starts symbol's /stock/metric call, or joins the one in flight,
+// before returning: Stock Detail asks for the quote's 52-week range and the
+// fundamentals at the same time. The call also refreshes the cached range.
+func (c *Client) startMetrics(ctx context.Context, sym market.Symbol) func() (metrics, error) {
+	return share(ctx, c, "metric:"+string(sym), func(fctx context.Context) (metrics, error) {
+		var m struct {
+			Metric metrics `json:"metric"`
+		}
+		if err := c.get(fctx, "/stock/metric", url.Values{"symbol": {string(sym)}, "metric": {"all"}}, &m); err != nil {
+			return metrics{}, err
+		}
+		if v := m.Metric; v.High != nil && v.Low != nil {
+			c.ranges.Set(string(sym), market.Range52{Low: *v.Low, High: *v.High})
+		}
+		return m.Metric, nil
+	})
+}
+
 // FiftyTwoWeek implements market.RangeProvider: the cached 52-week range for
 // symbol, or nil when the provider has none.
 func (c *Client) FiftyTwoWeek(ctx context.Context, sym market.Symbol) (*market.Range52, error) {
@@ -186,67 +296,29 @@ func (c *Client) FiftyTwoWeek(ctx context.Context, sym market.Symbol) (*market.R
 		r := e.Value
 		return &r, nil
 	}
-	var m struct {
-		Metric struct {
-			High *float64 `json:"52WeekHigh"`
-			Low  *float64 `json:"52WeekLow"`
-		} `json:"metric"`
-	}
-	if err := c.get(ctx, "/stock/metric", url.Values{"symbol": {string(sym)}, "metric": {"all"}}, &m); err != nil {
+	v, err := c.startMetrics(ctx, sym)()
+	if err != nil {
 		return nil, err
 	}
-	if m.Metric.High == nil || m.Metric.Low == nil {
+	if v.High == nil || v.Low == nil {
 		return nil, nil
 	}
-	r := market.Range52{Low: *m.Metric.Low, High: *m.Metric.High}
-	c.ranges.Set(string(sym), r)
-	return &r, nil
+	return &market.Range52{Low: *v.Low, High: *v.High}, nil
 }
 
 // Fundamentals implements market.FundamentalsProvider: the cached company
 // profile plus one /stock/metric call, which also refreshes the 52-week range.
 // ETFs have no profile and only price-based metrics.
 func (c *Client) Fundamentals(ctx context.Context, sym market.Symbol) (market.Fundamentals, error) {
-	info, err := c.instrument(ctx, sym)
+	// The two calls are independent: ask for both at once.
+	waitMetrics := c.startMetrics(ctx, sym)
+	info, err := c.startProfile(ctx, sym)()
 	if err != nil {
 		return market.Fundamentals{}, err
 	}
-	var m struct {
-		Metric struct {
-			High             *float64 `json:"52WeekHigh"`
-			Low              *float64 `json:"52WeekLow"`
-			MarketCap        *float64 `json:"marketCapitalization"`
-			EnterpriseValue  *float64 `json:"enterpriseValue"`
-			PE               *float64 `json:"peTTM"`
-			PS               *float64 `json:"psTTM"`
-			PB               *float64 `json:"pbQuarterly"`
-			EPS              *float64 `json:"epsTTM"`
-			RevenueGrowthYoY *float64 `json:"revenueGrowthTTMYoy"`
-			RevenueGrowth5Y  *float64 `json:"revenueGrowth5Y"`
-			EPSGrowthYoY     *float64 `json:"epsGrowthTTMYoy"`
-			GrossMargin      *float64 `json:"grossMarginTTM"`
-			OperatingMargin  *float64 `json:"operatingMarginTTM"`
-			NetMargin        *float64 `json:"netProfitMarginTTM"`
-			ROE              *float64 `json:"roeTTM"`
-			CurrentRatio     *float64 `json:"currentRatioQuarterly"`
-			DebtToEquity     *float64 `json:"totalDebt/totalEquityQuarterly"`
-			DividendYield    *float64 `json:"dividendYieldIndicatedAnnual"`
-			PayoutRatio      *float64 `json:"payoutRatioTTM"`
-			Beta             *float64 `json:"beta"`
-			ReturnYTD        *float64 `json:"yearToDatePriceReturnDaily"`
-			Return1Y         *float64 `json:"52WeekPriceReturnDaily"`
-			RelativeYTD      *float64 `json:"priceRelativeToS&P500Ytd"`
-			Relative1Y       *float64 `json:"priceRelativeToS&P50052Week"`
-			HighDate         string   `json:"52WeekHighDate"`
-			LowDate          string   `json:"52WeekLowDate"`
-		} `json:"metric"`
-	}
-	if err := c.get(ctx, "/stock/metric", url.Values{"symbol": {string(sym)}, "metric": {"all"}}, &m); err != nil {
+	v, err := waitMetrics()
+	if err != nil {
 		return market.Fundamentals{}, err
-	}
-	v := m.Metric
-	if v.High != nil && v.Low != nil {
-		c.ranges.Set(string(sym), market.Range52{Low: *v.Low, High: *v.High})
 	}
 	return market.Fundamentals{
 		Symbol: string(sym), Industry: info.Industry, Country: info.Country, IPODate: info.IPODate,
@@ -281,18 +353,10 @@ func benchmarkReturn(stock, relative *float64) *float64 {
 // call and no profile lookup. The free plan has no one-month return, only
 // month to date (checked 2026-10-27 on the sector ETFs and SPY).
 func (c *Client) PriceReturns(ctx context.Context, sym market.Symbol) (market.PriceReturns, error) {
-	var m struct {
-		Metric struct {
-			Return5D  *float64 `json:"5DayPriceReturnDaily"`
-			Return13W *float64 `json:"13WeekPriceReturnDaily"`
-			ReturnYTD *float64 `json:"yearToDatePriceReturnDaily"`
-			Return1Y  *float64 `json:"52WeekPriceReturnDaily"`
-		} `json:"metric"`
-	}
-	if err := c.get(ctx, "/stock/metric", url.Values{"symbol": {string(sym)}, "metric": {"all"}}, &m); err != nil {
+	v, err := c.startMetrics(ctx, sym)()
+	if err != nil {
 		return market.PriceReturns{}, err
 	}
-	v := m.Metric
 	return market.PriceReturns{Week: v.Return5D, Quarter: v.Return13W, YTD: v.ReturnYTD, Year: v.Return1Y}, nil
 }
 
@@ -335,6 +399,14 @@ func (c *Client) Recommendations(ctx context.Context, sym market.Symbol) ([]mark
 // rawQuote is one /quote call: the price and the day's change, without the
 // profile lookup for the name.
 func (c *Client) rawQuote(ctx context.Context, sym market.Symbol) (market.Quote, error) {
+	if err := c.spend(ctx); err != nil {
+		return market.Quote{}, err
+	}
+	return c.bookedQuote(ctx, sym)
+}
+
+// bookedQuote is rawQuote once its call has been booked.
+func (c *Client) bookedQuote(ctx context.Context, sym market.Symbol) (market.Quote, error) {
 	var d struct {
 		Current       float64  `json:"c"`
 		Change        *float64 `json:"d"`
@@ -345,7 +417,7 @@ func (c *Client) rawQuote(ctx context.Context, sym market.Symbol) (market.Quote,
 		PreviousClose float64  `json:"pc"`
 		Time          int64    `json:"t"`
 	}
-	if err := c.get(ctx, "/quote", url.Values{"symbol": {string(sym)}}, &d); err != nil {
+	if err := c.send(ctx, "/quote", url.Values{"symbol": {string(sym)}}, &d); err != nil {
 		return market.Quote{}, err
 	}
 	if d.Current == 0 && d.Time == 0 {
@@ -370,13 +442,20 @@ func (c *Client) rawQuote(ctx context.Context, sym market.Symbol) (market.Quote,
 }
 
 func (c *Client) quote(ctx context.Context, sym market.Symbol) (market.Quote, error) {
-	q, err := c.rawQuote(ctx, sym)
+	// Book the quote's call before the profile can take the budget's last room.
+	if err := c.spend(ctx); err != nil {
+		return market.Quote{}, err
+	}
+	// The profile does not depend on the price, so a symbol's first quote sends
+	// both calls at once and waits for the slower, not for one after the other.
+	profile := c.startProfile(ctx, sym)
+	q, err := c.bookedQuote(ctx, sym)
 	if err != nil {
 		return market.Quote{}, err
 	}
 	// Names and ranges are extras: a quote is still useful without them, and a
 	// later refresh fills them in once there is room in the budget.
-	if info, err := c.instrument(ctx, sym); err == nil {
+	if info, err := profile(); err == nil {
 		q.Name, q.Exchange, q.Currency, q.Logo = info.Name, info.Exchange, info.Currency, info.Logo
 	} else {
 		q.Currency = "USD"
@@ -469,14 +548,25 @@ func (c *Client) search(ctx context.Context, query string) ([]market.Instrument,
 }
 
 // SearchSymbols implements market.Provider. Finnhub search results carry no
-// exchange, so Instrument.Exchange is empty.
+// exchange, so Instrument.Exchange is empty. Logos come from the cache, and
+// the first results' missing ones are looked up in the background, so the
+// answer never waits for a profile call.
 func (c *Client) SearchSymbols(ctx context.Context, query string, limit int) ([]market.Instrument, error) {
 	all, err := c.search(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 	found := all[:min(limit, len(all))]
-	c.attachLogos(ctx, found)
+	var missing []market.Symbol
+	for i := range found {
+		sym := market.Symbol(found[i].Symbol)
+		logo, known := c.CachedLogo(sym)
+		found[i].Logo = logo
+		if !known && i < maxLogoFills {
+			missing = append(missing, sym)
+		}
+	}
+	c.fillLogos(ctx, missing)
 	return found, nil
 }
 

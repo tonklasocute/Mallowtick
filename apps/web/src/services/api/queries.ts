@@ -97,11 +97,17 @@ export function useUsdThb(enabled = true) {
   });
 }
 
+/**
+ * How often the sector heatmap refreshes. A heatmap needs no minute-by-minute prices, and
+ * each refresh costs up to 12 Finnhub calls; the server keeps the day's changes as long.
+ */
+const SECTORS_REFRESH_MS = 5 * 60_000;
+
 /** How soon to ask again for sectors the rate limit left out. */
 const SECTORS_QUOTA_RETRY_MS = 15_000;
 
 /**
- * Sector returns against the S&P 500. The day's change refreshes with quotes; the
+ * Sector returns against the S&P 500. The day's change refreshes every five minutes; the
  * server caches the longer returns for 6h. Pass `enabled` once the section is on screen.
  * While the rate limit left sectors out it asks again sooner; the server fetches only
  * what is missing, and refuses locally (no provider call) until there is room.
@@ -114,7 +120,7 @@ export function useSectors(enabled = true) {
     refetchInterval: (query) =>
       query.state.data?.unavailable.some((u) => u.reason === "rate_limited")
         ? SECTORS_QUOTA_RETRY_MS
-        : QUOTE_REFRESH_MS,
+        : SECTORS_REFRESH_MS,
   });
 }
 

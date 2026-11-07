@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -93,5 +93,44 @@ describe("SectorRotation", () => {
     mockSectors(() => apiError(503, "provider_not_configured"));
     renderWithProviders(<SectorRotation />);
     expect(await screen.findByText(/FINNHUB_API_KEY/)).toBeInTheDocument();
+  });
+});
+
+describe("SectorRotation refresh", () => {
+  afterEach(() => vi.useRealTimers());
+
+  /** Renders the heatmap on fake timers and waits for the first response. */
+  async function renderLoaded(data: SectorsResult) {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockSectors(() => ok(data));
+    renderWithProviders(<SectorRotation />);
+    const region = await screen.findByRole("region", { name: "กลุ่มอุตสาหกรรมเทียบตลาด" });
+    await within(region).findByText("กลุ่มที่นำตลาด · วันนี้", { exact: false });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    return region;
+  }
+
+  const wait = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+
+  it("refreshes every five minutes and isn't labelled stale in between", async () => {
+    const region = await renderLoaded({ ...sectors, unavailable: [] });
+
+    // Past three one-minute quote refreshes, yet before the heatmap's own refresh.
+    await wait(5 * 60_000 - 1000);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(within(region).queryAllByText(/ข้อมูลเก่า|ไม่ได้รีเฟรช/)).toEqual([]);
+    expect(within(region).getByText(/ข้อมูลจาก Finnhub · อัปเดต/)).toBeInTheDocument();
+
+    await wait(2000);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks again after 15 seconds while the rate limit left sectors out", async () => {
+    await renderLoaded(sectors); // XLU is rate_limited
+
+    await wait(14_000);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await wait(2000);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });
