@@ -27,6 +27,24 @@ type Config struct {
 	TwelveData      TwelveData
 	Finnhub         Finnhub
 	Market          Market
+	Clients         Clients
+}
+
+// Clients limits what one client (an IP address, or an IPv6 /64) may use, so
+// nobody can spend the shared provider budgets for everyone. Zero turns a
+// limit off.
+type Clients struct {
+	RequestsPerMinute int
+	// TwelveDataPerDay is a client's share of Twelve Data's 800 daily credits.
+	// The per-minute window stays shared: a batch quote takes up to 8 at once.
+	TwelveDataPerDay int
+	// FinnhubPerMinute is a client's share of Finnhub's calls per minute;
+	// Finnhub has no daily cap.
+	FinnhubPerMinute int
+	// TrustedProxies are the addresses (IPs or CIDRs) allowed to name the
+	// client in X-Forwarded-For: the web app's proxy route. Others are
+	// identified by their own address.
+	TrustedProxies []string
 }
 
 // Finnhub configures the optional Finnhub adapter. With an APIKey it serves
@@ -104,6 +122,41 @@ func (l *loader) positiveInt(key string, def int) int {
 	return n
 }
 
+// limit reads a non-negative integer where 0 turns the limit off.
+func (l *loader) limit(key string, def int) int {
+	raw := l.str(key, "")
+	if raw == "" {
+		return def
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		l.errs = append(l.errs, fmt.Errorf("%s: %q is not a whole number (0 turns the limit off)", key, raw))
+		return def
+	}
+	return n
+}
+
+// proxies reads a comma-separated list of IPs or CIDRs; "none" trusts no proxy.
+func (l *loader) proxies(key, def string) []string {
+	raw := l.str(key, def)
+	if strings.EqualFold(raw, "none") {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.Split(raw, ",") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if _, _, err := net.ParseCIDR(p); err != nil && net.ParseIP(p) == nil {
+			l.errs = append(l.errs, fmt.Errorf("%s: %q is not an IP address or CIDR", key, p))
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
 func (l *loader) symbols(key, def string) []market.Symbol {
 	raw := l.str(key, def)
 	if strings.EqualFold(raw, "none") || raw == "" {
@@ -146,6 +199,12 @@ func Load(lookup LookupFunc) (Config, error) {
 			OverviewSymbols: l.symbols("MARKET_OVERVIEW_SYMBOLS", "SPY,QQQ,DIA"),
 			PopularSymbols:  l.symbols("POPULAR_SYMBOLS", ""),
 			CacheFile:       l.str("CACHE_FILE", ""),
+		},
+		Clients: Clients{
+			RequestsPerMinute: l.limit("CLIENT_REQUESTS_PER_MINUTE", 120),
+			TwelveDataPerDay:  l.limit("CLIENT_TWELVEDATA_CREDITS_PER_DAY", 200),
+			FinnhubPerMinute:  l.limit("CLIENT_FINNHUB_CALLS_PER_MINUTE", 45),
+			TrustedProxies:    l.proxies("TRUSTED_PROXIES", "127.0.0.1,::1"),
 		},
 	}
 

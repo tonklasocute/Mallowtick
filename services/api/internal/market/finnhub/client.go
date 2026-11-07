@@ -136,8 +136,12 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 	return c.send(ctx, path, params, out)
 }
 
-// spend books one call from the budget, waiting up to maxWait for room.
+// spend books one call from the client's share and then from the budget,
+// waiting up to maxWait for room.
 func (c *Client) spend(ctx context.Context) error {
+	if err := market.TakeAllowance(ctx, ProviderName, 1); err != nil {
+		return err
+	}
 	if err := c.budget.Spend(ctx, 1, c.maxWait); err != nil {
 		if errors.Is(err, ratebudget.ErrNoRoom) {
 			return fmt.Errorf("%w: %w", market.ErrRateLimited, err)

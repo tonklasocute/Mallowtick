@@ -94,7 +94,8 @@ open. Measure with `LOG_LEVEL=debug` (logs every provider call with its credits)
 
 ## Later (not in this branch)
 
-- Per-IP rate limit in the API, so one client cannot spend the budget for everyone.
+- ~~Per-IP rate limit in the API, so one client cannot spend the budget for everyone.~~ Done
+  on `feat/per-ip-rate-limit`: per-client shares of each vendor's budget plus a request cap.
 - Optional fallback vendor for candles when Twelve Data is out of credits.
 - Deployment: one API instance (the cache and the credit budget are per process), HTTPS, Docker.
 

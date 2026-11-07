@@ -16,6 +16,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/tonklasocute/mallowtick/services/api/internal/clientlimit"
 	"github.com/tonklasocute/mallowtick/services/api/internal/config"
 	"github.com/tonklasocute/mallowtick/services/api/internal/market"
 	"github.com/tonklasocute/mallowtick/services/api/internal/market/finnhub"
@@ -86,6 +87,7 @@ func run() error {
 		Addr: cfg.Addr,
 		Handler: httptransport.NewRouter(httptransport.Options{
 			Service: svc, Logger: log, CORSOrigins: cfg.CORSOrigins, RequestTimeout: cfg.RequestTimeout,
+			Limiter: newClientLimiter(cfg.Clients), TrustedProxies: cfg.Clients.TrustedProxies,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
@@ -202,6 +204,18 @@ func writeCacheFile(svc *market.Service, path string) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
+}
+
+// newClientLimiter gives each client its limits, so one cannot spend the
+// shared provider budgets for everyone.
+func newClientLimiter(cfg config.Clients) *clientlimit.Limiter {
+	return clientlimit.New(clientlimit.Config{
+		RequestsPerMinute: cfg.RequestsPerMinute,
+		Vendors: map[string]clientlimit.Rate{
+			twelvedata.ProviderName: {PerDay: cfg.TwelveDataPerDay},
+			finnhub.ProviderName:    {PerMinute: cfg.FinnhubPerMinute},
+		},
+	})
 }
 
 func newLogger(cfg config.Config) *slog.Logger {

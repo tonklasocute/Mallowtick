@@ -60,6 +60,37 @@ func status(code int, body string) http.HandlerFunc {
 
 const aaplQuote = `{"c":344.77,"d":-2.955,"dp":-0.8498,"h":346.215,"l":341.03,"o":344.91,"pc":347.725,"t":1793024229}`
 
+// oneCall is a client allowance with a single Finnhub call left.
+type oneCall struct{ used bool }
+
+func (a *oneCall) Take(vendor string, units int) bool {
+	if vendor != ProviderName || a.used || units != 1 {
+		return false
+	}
+	a.used = true
+	return true
+}
+
+func TestClientAllowanceIsSpentBeforeTheProvider(t *testing.T) {
+	var metrics atomic.Int32
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/stock/metric": func(w http.ResponseWriter, _ *http.Request) {
+			metrics.Add(1)
+			_, _ = w.Write([]byte(`{"metric":{"52WeekHigh":351.73,"52WeekLow":243.42}}`))
+		},
+	}, 60)
+	ctx := market.WithAllowance(context.Background(), &oneCall{})
+	if _, err := c.FiftyTwoWeek(ctx, "AAPL"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.FiftyTwoWeek(ctx, "MSFT"); !errors.Is(err, market.ErrRateLimited) {
+		t.Fatalf("second call: got %v, want ErrRateLimited", err)
+	}
+	if metrics.Load() != 1 {
+		t.Fatalf("a client over its share must not reach the provider; calls = %d", metrics.Load())
+	}
+}
+
 func TestQuoteWithProfileAndRange(t *testing.T) {
 	c := newTestClient(t, map[string]http.HandlerFunc{
 		"/quote":          respond(aaplQuote),

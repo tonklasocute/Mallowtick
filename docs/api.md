@@ -22,7 +22,8 @@ Error:
 |---|---|---|
 | `invalid_request` | 400 | Bad symbol, query, range or list |
 | `not_found` | 404 | Unknown symbol / no data, or unknown endpoint |
-| `rate_limited` | 429 | Local credit limiter or provider limit (`Retry-After: 60`) |
+| `rate_limited` | 429 | Local credit limiter, provider limit, or the client's share of a vendor's budget used up (`Retry-After: 60`) |
+| `too_many_requests` | 429 | The client sent more than `CLIENT_REQUESTS_PER_MINUTE` (`Retry-After` until the next request fits) |
 | `provider_not_configured` | 503 | `TWELVEDATA_API_KEY` not set |
 | `provider_auth_failed` | 502 | Provider rejected the key |
 | `provider_not_entitled` | 502 | Plan doesn't include the data |

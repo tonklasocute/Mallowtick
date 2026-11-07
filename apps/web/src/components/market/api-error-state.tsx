@@ -12,9 +12,14 @@ const COPY: Record<string, { title: string; description: string }> = {
     description:
       "ตั้งค่า TWELVEDATA_API_KEY ที่เซิร์ฟเวอร์ API ของ Mallowtick เพื่อโหลดข้อมูลตลาดจริง ระหว่างนี้จะไม่แสดงราคาตัวอย่างใด ๆ",
   },
+  // The vendors' quota, or this device's share of it, is used up for now.
   rate_limited: {
     title: "ขอพักหายใจแป๊บนึง",
-    description: "เรียกข้อมูลเกินโควตาของแพ็กเกจข้อมูลตลาดแล้ว ลองใหม่อีกครั้งในอีกประมาณ 1 นาที",
+    description: "ใช้โควตาข้อมูลตลาดครบแล้วในตอนนี้ ลองใหม่อีกครั้งในอีกสักครู่",
+  },
+  too_many_requests: {
+    title: "เรียกข้อมูลถี่เกินไป",
+    description: "รอสักครู่แล้วลองใหม่อีกครั้ง",
   },
   not_found: {
     title: "ไม่พบข้อมูลของหุ้นตัวนี้",

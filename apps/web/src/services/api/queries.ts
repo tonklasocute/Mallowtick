@@ -31,6 +31,7 @@ const NO_RETRY = new Set([
   "not_found",
   "provider_not_configured",
   "rate_limited",
+  "too_many_requests",
   "provider_auth_failed",
   "provider_not_entitled",
 ]);
