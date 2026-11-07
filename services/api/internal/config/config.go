@@ -64,8 +64,12 @@ type TwelveData struct {
 	APIKey           string
 	BaseURL          string
 	CreditsPerMinute int
-	MaxWait          time.Duration
-	Timeout          time.Duration
+	// MaxWait is how long a request waits for room in the credit window
+	// before failing with rate_limited. Kept short (3s by default): past a
+	// few seconds a chart only looks frozen, while rate_limited lets the
+	// screen say the quota is used up.
+	MaxWait time.Duration
+	Timeout time.Duration
 }
 
 // Market configures caching, freshness labelling, and curated symbol lists.
@@ -182,7 +186,7 @@ func Load(lookup LookupFunc) (Config, error) {
 			APIKey:           l.str("TWELVEDATA_API_KEY", ""),
 			BaseURL:          l.str("TWELVEDATA_BASE_URL", "https://api.twelvedata.com"),
 			CreditsPerMinute: l.positiveInt("TWELVEDATA_CREDITS_PER_MINUTE", 8),
-			MaxWait:          l.duration("TWELVEDATA_MAX_WAIT", 10*time.Second),
+			MaxWait:          l.duration("TWELVEDATA_MAX_WAIT", 3*time.Second),
 			Timeout:          l.duration("TWELVEDATA_TIMEOUT", 10*time.Second),
 		},
 		Finnhub: Finnhub{

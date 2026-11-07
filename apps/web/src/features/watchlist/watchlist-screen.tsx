@@ -4,10 +4,10 @@ import { Check, MinusCircle, Pencil, Plus } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
-import { Sparkline } from "@/components/charts/sparkline";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { ApiErrorState } from "@/components/market/api-error-state";
+import { DailySparkline } from "@/components/stocks/daily-sparkline";
 import { QuoteRow } from "@/components/stocks/quote-row";
 import { SymbolAvatar } from "@/components/stocks/symbol-avatar";
 import { UnavailableQuoteRow } from "@/components/stocks/unavailable-quote-row";
@@ -15,27 +15,11 @@ import { IconButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StateMessage } from "@/components/ui/state-message";
-import { useInView } from "@/hooks/use-in-view";
 import { unavailableReasonLabel } from "@/lib/unavailable-reason";
 import { isApiError } from "@/services/api/client";
-import { useDailySparkline, useQuotes } from "@/services/api/queries";
+import { useQuotes } from "@/services/api/queries";
 
 import { useStorageDescription, useWatchlist } from "./use-watchlist";
-
-/**
- * One month of daily closes, coloured by the line's own direction rather than today's
- * change next to it. Loads only once its row is on screen (and not on narrow phones,
- * where it is hidden).
- */
-function RowSparkline({ symbol }: { symbol: string }) {
-  const [ref, inView] = useInView<HTMLSpanElement>();
-  const { data } = useDailySparkline(symbol, inView);
-  return (
-    <span ref={ref} className="hidden min-[360px]:block">
-      {data && data.candles.length >= 2 && <Sparkline candles={data.candles} />}
-    </span>
-  );
-}
 
 export function WatchlistScreen() {
   const wl = useWatchlist();
@@ -129,7 +113,10 @@ export function WatchlistScreen() {
                         key={symbol}
                         quote={q}
                         receivedAt={quotes.dataUpdatedAt}
-                        middle={<RowSparkline symbol={symbol} />}
+                        // Month line, loaded once on screen; hidden (never loaded) on narrow phones.
+                        middle={
+                          <DailySparkline symbol={symbol} className="hidden min-[360px]:block" />
+                        }
                         trailing={remove}
                       />
                     );

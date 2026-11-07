@@ -1,0 +1,99 @@
+# Runs the checks from the Makefile (test, lint, build) on Linux for every pull request and
+# every push to main. The Windows dev machine can't run them all: `go test -race` needs cgo
+# and there is no gcc, golangci-lint isn't installed, and its CRLF working copy makes gofmt
+# and Prettier flag every file. Linux runners check out LF, so no workarounds are needed here.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A new push to a pull request replaces its running checks; every commit on main is checked.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  api:
+    name: API (Go)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: services/api/go.mod
+          cache-dependency-path: services/api/go.sum
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          # The release binary must be built with Go 1.27 to load this go 1.27 module;
+          # v2.15.0's is (go1.27.0, checked 2026-11-07).
+          version: v2.15.0
+          working-directory: services/api
+
+      - name: go test -race
+        run: go test -race -count=1 ./...
+
+  web:
+    name: Web (Next.js)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          # package.json has no engines field; 24 (LTS) matches the Windows dev machine.
+          node-version: 24
+
+      # Installs the pnpm version from "packageManager" in package.json and caches its store.
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          cache: true
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --filter @mallowtick/web lint
+
+      - name: Typecheck
+        run: pnpm --filter @mallowtick/web typecheck
+
+      - name: Format check
+        run: pnpm --filter @mallowtick/web format:check
+
+      - name: Test
+        run: pnpm --filter @mallowtick/web test
+
+      # Needs no secrets: API_ORIGIN is read at request time by the /api/v1 proxy route.
+      - name: Build
+        run: pnpm --filter @mallowtick/web build

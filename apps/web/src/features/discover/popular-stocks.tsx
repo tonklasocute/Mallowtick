@@ -1,3 +1,4 @@
+import { DailySparkline } from "@/components/stocks/daily-sparkline";
 import { QuoteRow } from "@/components/stocks/quote-row";
 import { UnavailableQuoteRow } from "@/components/stocks/unavailable-quote-row";
 import { Card } from "@/components/ui/card";
@@ -20,7 +21,14 @@ export function PopularStocks({ quotes, unavailable, receivedAt }: PopularStocks
       <Card className="rounded-[1.5rem] px-3.5 py-1.5">
         <ul className="divide-y divide-dashed divide-line">
           {quotes.map((q) => (
-            <QuoteRow key={q.symbol} quote={q} receivedAt={receivedAt} avatarShape="square" />
+            <QuoteRow
+              key={q.symbol}
+              quote={q}
+              receivedAt={receivedAt}
+              avatarShape="square"
+              // A month line like the watchlist's: loaded once on screen, none on narrow phones.
+              middle={<DailySparkline symbol={q.symbol} className="hidden min-[360px]:block" />}
+            />
           ))}
           {unavailable.map((u) => (
             <UnavailableQuoteRow

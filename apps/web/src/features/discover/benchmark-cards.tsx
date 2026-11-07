@@ -4,9 +4,11 @@ import { CircleSlash } from "lucide-react";
 import Link from "next/link";
 
 import { AreaSparkline } from "@/components/charts/area-sparkline";
+import { Sparkline } from "@/components/charts/sparkline";
 import { FreshnessBadge, FreshnessInline } from "@/components/market/freshness-badge";
 import { PriceChange } from "@/components/market/price-change";
 import { PriceText } from "@/components/market/price-text";
+import { useInViewDailySparkline } from "@/components/stocks/daily-sparkline";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
@@ -106,6 +108,7 @@ export function BenchmarkTile({
   receivedAt: number;
   tint: string;
 }) {
+  const [lineRef, month, monthFailed] = useInViewDailySparkline<HTMLDivElement>(quote.symbol);
   return (
     <Link href={stockHref(quote.symbol)} className="block h-full rounded-[1.5rem]">
       <Card className="flex h-full flex-col items-start gap-1 rounded-[1.5rem] p-3.5 transition hover:border-mint">
@@ -122,12 +125,25 @@ export function BenchmarkTile({
           variant="pill"
           className="text-[11.5px]"
         />
-        <FreshnessInline
-          className="mt-auto pt-1"
-          freshness={quote.freshness}
-          isMarketOpen={quote.isMarketOpen}
-          receivedAt={receivedAt}
-        />
+        {/*
+         * A month of daily closes, unlike the hero's day line, so it is labelled and coloured
+         * by its own direction. The space is kept while it loads so the grid doesn't jump;
+         * it closes only if the line can't be had.
+         */}
+        {!monthFailed && (
+          <div ref={lineRef} className="mt-1 h-8 w-full">
+            {month && <Sparkline candles={month} height={32} stretch className="block" />}
+          </div>
+        )}
+        <div className="mt-auto flex w-full flex-wrap items-center gap-x-2 pt-1">
+          <FreshnessInline
+            freshness={quote.freshness}
+            isMarketOpen={quote.isMarketOpen}
+            receivedAt={receivedAt}
+          />
+          {/* Stays at the right, under the line's end, when it wraps on narrow tiles. */}
+          {month && <span className="ml-auto text-[11px] text-slate">1 เดือน</span>}
+        </div>
       </Card>
     </Link>
   );

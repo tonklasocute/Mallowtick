@@ -84,10 +84,13 @@ that sets that header (see docs/architecture.md).
   `finnhub/client.go`).
 - Company fundamentals: Stock Detail shows the Finnhub profile, key ratios and returns vs
   the S&P 500 (`/fundamentals`), EPS against estimates (`/earnings/history`) and analyst
-  ratings (`/recommendations`), in `features/stock-detail/`. News and SEC statements were
-  tested on 2026-10-27 but are not used yet. What each free source gives, and what is 403, is in
-  [docs/market-data.md](docs/market-data.md#company-fundamentals). The industry name is the
-  vendor's English text; there is no Thai mapping yet.
+  ratings (`/recommendations`), in `features/stock-detail/`, and company news (`/news`,
+  Finnhub `/company-news`, `company-news.tsx`). SEC statements were tested on 2026-10-27 but
+  are not used yet: SEC EDGAR needs a User-Agent with a real contact email (user's call). What each free source gives, and what is 403, is in
+  [docs/market-data.md](docs/market-data.md#company-fundamentals). The industry is shown in
+  Thai through `lib/industry-names.ts` (case-insensitive; unknown values keep the vendor's
+  English). 20 values were checked against real profiles on 2026-11-07; the rest of the list
+  is unverified.
 - Company logos: Finnhub's `profile2` `logo` URL travels as `logo` on quotes and search
   results (`""` for ETFs, symbols without one, and Twelve Data alone). The browser never
   loads Finnhub directly: `SymbolAvatar` uses `next/image`, so the server shrinks the
@@ -153,6 +156,12 @@ that sets that header (see docs/architecture.md).
   the same tiles. Its "฿" glyph for "มูลค่าบริษัท" is "$" here, since prices are in USD.
 - The header repeats the price ("RKLB $53.82") once the price line scrolls under it.
 - The chart toggles wrap onto a second row on phones (the canvas CSS wraps them too).
+- "ข่าวล่าสุด" is the last card. The canvas has no artboard for it, so it follows the other
+  cards (`DetailCard` takes a ref for `useInView`). It fetches once near the screen; the API
+  keeps a symbol's news 30 minutes (~1 Finnhub call per symbol per 30 min). Headlines stay in
+  the vendor's English, five shown then "ดูข่าวเพิ่ม", no images (they come from many hosts and
+  `next/image` allows only Finnhub's logo host). Finnhub tags news loosely: RKLB's included
+  SpaceX and Tesla stories.
 
 ## Discover screen
 
@@ -160,9 +169,14 @@ that sets that header (see docs/architecture.md).
   mascot on the right, pill search with a dark submit button, pastel ticker chips, prices
   with a raised `$` (`components/market/price-text.tsx`), and a floating pill bottom nav
   (shared by every screen; `--nav-height`/`--nav-offset` in `globals.css`).
-- Only the first benchmark card draws a sparkline (with a dashed previous-close line). The
-  design also shows them on the other benchmarks and popular rows; they were left out on
-  purpose because each costs a provider credit (user's decision, 2026-10-26).
+- The hero benchmark card draws today's 1D line with a dashed previous-close line. The other
+  benchmark tiles and the popular rows draw one month of daily closes (`range=1m`, the
+  watchlist's data; `DailySparkline`/`useInViewDailySparkline` in
+  `components/stocks/daily-sparkline.tsx`), fetched only once on screen and coloured by the
+  line's own direction; tiles label it "1 เดือน". They were left out on 2026-10-26 because each
+  cost a credit; since 1M comes from the shared daily series they cost about 2 Twelve Data
+  credits per symbol a day (6 symbols ≈ 12 of 800). A rate-limited line retries once after
+  `Retry-After` and otherwise stays hidden.
 - The hero mascot floats slowly (`animate-bob`, 4 s). It stays still under
   `prefers-reduced-motion`, which Windows turns on when "Animation effects" is off.
 - Fonts follow the design canvas: Nunito for Latin text and numbers, Mitr for Thai, loaded
@@ -171,7 +185,9 @@ that sets that header (see docs/architecture.md).
   uses 300–500 for Thai, so prefer `font-light`/`font-normal`/`font-medium` on Thai copy.
 - The mascot (`components/brand/mascot.tsx`) is drawn as on the canvas: a white body with a
   dark outline, not the cream body of docs/design-reference.png (user's decision,
-  2026-10-27). The favicon and app icons in `public/icons` still show the old mascot.
+  2026-10-27). The favicon and app icons come from `scripts/generate-icons.mjs` (`pnpm icons`),
+  which draws the same artwork; the favicon sits on a mint-soft tile because the mint leaf
+  vanishes on mint. Icons are cache-first in `public/sw.js`: bump its `VERSION` when they change.
 - The design's bell button and "ดูทั้งหมด" link are omitted: there are no notifications or
   full popular list yet.
 - "กลุ่มอุตสาหกรรมเทียบตลาด" (`sector-rotation.tsx`, `/market/sectors`) ranks the 11 S&P 500
@@ -259,8 +275,10 @@ The project is worked on from both a Windows PC and a Mac.
   ```
   Web, in a second terminal from the repo root: `corepack pnpm --filter @mallowtick/web dev`.
 - Git Bash `sed -i` converts CRLF files to LF. Edit with the Edit tool or `perl -pi` instead.
-- `go test -race` needs cgo and there is no gcc; golangci-lint isn't installed. Both run on an
-  LF export of a commit (plain `git archive` applies `core.autocrlf` and gives CRLF again):
+- `go test -race` needs cgo and there is no gcc; golangci-lint isn't installed. CI runs both
+  on every pull request (`.github/workflows/ci.yml`, Linux, LF checkout). To run them here
+  first, use an LF export of a commit (plain `git archive` applies `core.autocrlf` and gives
+  CRLF again):
   - `git -c core.autocrlf=false archive HEAD services/api | tar -x -C <dir>`
   - race tests in Docker: `MSYS_NO_PATHCONV=1 docker run --rm -v "<dir>/services/api:/src"
     -w /src golang:1.27 go test -race ./...`
@@ -268,6 +286,29 @@ The project is worked on from both a Windows PC and a Mac.
     github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`, then
     `GOTOOLCHAIN=go1.27.2 <bin>/golangci-lint run ./...` in `<dir>/services/api`. A
     golangci-lint or staticcheck built with an older Go can't load this module (go 1.27).
+
+## CI and deployment
+
+- CI (`.github/workflows/ci.yml`) runs the Makefile's checks on pull requests and pushes to
+  `main`: Go vet, gofmt, golangci-lint v2.15.0 (built with Go 1.27, needed to load this
+  module), `go test -race`, and the web app's lint, typecheck, format:check, test and build.
+  Actions are pinned to commit SHAs. The repo is public, so Actions are free.
+- Deployment is free and documented in [docs/deploy.md](docs/deploy.md): Docker Compose with
+  Caddy in front, on an always-free cloud VM with a DuckDNS name for automatic HTTPS (the
+  user won't keep a PC on; a Cloudflare quick tunnel is only for a short try). One API
+  instance only: the cache and the per-client limits are per process.
+- The compose network is fixed at `172.28.86.0/24` and the web container at `172.28.86.10`,
+  which is the API's only `TRUSTED_PROXIES` entry. Caddy replaces any client-sent
+  `X-Forwarded-For` with the client it sees. Changing the subnet means editing
+  `docker-compose.yml`, `deploy/compose.tunnel.yml` and `deploy/Caddyfile.tunnel` together.
+- `docker compose config` prints the merged config **with the API keys** from
+  `services/api/.env`. Use `docker compose config --quiet`; never run the plain form in a
+  session whose output is shared or logged.
+- `next.config.ts` has `output: "standalone"` for the image; a local `next start` then warns
+  that it "does not work" with standalone, but it still serves.
+- Unverified (2026-11-07): a real VM (visitor IPs reaching Caddy, certificate issuance on a
+  DuckDNS name, Oracle's firewall), an arm64 build, `next build` memory on a 1 GB VM, and a
+  live Cloudflare tunnel (the trust logic was tested with a stand-in container).
 
 ## Known issues
 
