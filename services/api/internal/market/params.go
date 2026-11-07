@@ -96,29 +96,49 @@ const (
 // RangeSpec maps a Range to the provider request that covers it.
 type RangeSpec struct {
 	Interval Interval
-	// Bars is the number of most recent bars requested. Intraday counts assume
-	// regular US sessions (6.5 hours), so a range may span slightly more or
-	// less calendar time around holidays and half days.
+	// Bars is the number of most recent bars the range shows. Intraday counts
+	// assume regular US sessions (6.5 hours), so a range may span slightly more
+	// or less calendar time around holidays and half days.
 	Bars int
 	// CacheTTL is how long a fetched series is reused while the market is open;
 	// roughly one bar, since a refetch sooner adds little. Closed-market series
-	// are kept until the next open.
+	// are kept until the next open. Daily ranges share one series (dailySeries)
+	// that is kept until the close instead, so for them CacheTTL applies only
+	// while the market status is not cached.
 	CacheTTL time.Duration
 }
+
+// dailyCacheTTL is how long the shared daily series is kept when the cached
+// market status cannot tell when the session ends.
+const dailyCacheTTL = time.Hour
 
 var rangeSpecs = map[Range]RangeSpec{
 	Range1D: {Interval: Interval5Min, Bars: 78, CacheTTL: 5 * time.Minute},   // 1 session × 78 five-minute bars
 	Range1W: {Interval: Interval30Min, Bars: 65, CacheTTL: 15 * time.Minute}, // 5 sessions × 13 bars
-	Range1M: {Interval: Interval1Day, Bars: 22, CacheTTL: time.Hour},         // ~22 sessions
-	Range3M: {Interval: Interval1Day, Bars: 63, CacheTTL: time.Hour},
-	Range1Y: {Interval: Interval1Day, Bars: 252, CacheTTL: time.Hour},
+	Range1M: {Interval: Interval1Day, Bars: 22, CacheTTL: dailyCacheTTL},     // ~22 sessions
+	Range3M: {Interval: Interval1Day, Bars: 63, CacheTTL: dailyCacheTTL},
+	Range1Y: {Interval: Interval1Day, Bars: 252, CacheTTL: dailyCacheTTL},
 	Range5Y: {Interval: Interval1Week, Bars: 260, CacheTTL: 6 * time.Hour},
 }
+
+// dailySeries is the one request behind every daily range: as many bars as the
+// longest one, so 1M, 3M and 1Y slice the same cached series and cost one
+// credit together instead of one each.
+var dailySeries = func() RangeSpec {
+	spec := RangeSpec{Interval: Interval1Day, CacheTTL: dailyCacheTTL}
+	for _, rs := range rangeSpecs {
+		if rs.Interval == Interval1Day {
+			spec.Bars = max(spec.Bars, rs.Bars)
+		}
+	}
+	return spec
+}()
 
 // WarmupBars are fetched before a range's bars in the same request (Twelve
 // Data charges one credit per request regardless of size) so indicators such
 // as a 300-bar EMA have converged by the first visible bar. Three times the
-// longest supported period leaves the seed's influence below 0.3%.
+// longest supported period leaves the seed's influence below 0.3%. Ranges cut
+// from dailySeries get the WarmupBars right before their own bars.
 const WarmupBars = 900
 
 // Ranges lists supported ranges in display order.

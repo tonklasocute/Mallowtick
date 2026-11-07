@@ -385,8 +385,8 @@ func TestCandlesSplitWarmupFromRangeBars(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := int(p.candleBars.Load()), Range3M.Spec().Bars+WarmupBars; got != want {
-		t.Fatalf("provider asked for %d bars, want %d (range + warm-up in one request)", got, want)
+	if got, want := int(p.candleBars.Load()), dailySeries.Bars+WarmupBars; got != want {
+		t.Fatalf("provider asked for %d bars, want %d (longest daily range + warm-up in one request)", got, want)
 	}
 	if len(res.Candles) != 63 || len(res.Warmup) != 7 {
 		t.Fatalf("want 63 range bars and 7 warm-up bars, got %d and %d", len(res.Candles), len(res.Warmup))

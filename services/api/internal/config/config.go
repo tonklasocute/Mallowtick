@@ -58,6 +58,9 @@ type Market struct {
 	StaleRetention  time.Duration
 	OverviewSymbols []market.Symbol
 	PopularSymbols  []market.Symbol
+	// CacheFile keeps the caches that cost Twelve Data credits across
+	// restarts; empty keeps them in memory only.
+	CacheFile string
 }
 
 // LookupFunc matches os.LookupEnv.
@@ -142,6 +145,7 @@ func Load(lookup LookupFunc) (Config, error) {
 			StaleRetention:  l.duration("STALE_RETENTION", 24*time.Hour),
 			OverviewSymbols: l.symbols("MARKET_OVERVIEW_SYMBOLS", "SPY,QQQ,DIA"),
 			PopularSymbols:  l.symbols("POPULAR_SYMBOLS", ""),
+			CacheFile:       l.str("CACHE_FILE", ""),
 		},
 	}
 

@@ -8,23 +8,55 @@ import { WatchlistProvider } from "@/features/watchlist/use-watchlist";
 import { MemoryWatchlistRepository } from "@/features/watchlist/watchlist-repository";
 import { WatchlistScreen } from "@/features/watchlist/watchlist-screen";
 import { WatchlistToggle } from "@/features/watchlist/watchlist-toggle";
+import type { CandleSeries } from "@/types/api";
 
-import { apiError, ok, quote } from "../fixtures";
+import { apiError, freshness, ok, quote } from "../fixtures";
 import { renderWithProviders } from "../render";
 
 afterEach(() => vi.unstubAllGlobals());
 
-function mockQuotes(handler: (symbols: string[]) => Response) {
+function mockQuotes(
+  handler: (symbols: string[]) => Response,
+  // Sparklines are unavailable by default, so they must not render.
+  candles: () => Response = () => apiError(429, "rate_limited"),
+) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input), "http://localhost");
       if (url.pathname === "/api/v1/stocks/quotes")
         return handler((url.searchParams.get("symbols") ?? "").split(","));
-      return apiError(429, "rate_limited"); // sparklines: unavailable, so they must not render
+      return candles();
     }),
   );
 }
+
+const candleRequests = () =>
+  vi
+    .mocked(fetch)
+    .mock.calls.map(([u]) => String(u))
+    .filter((u) => u.includes("/candles"));
+
+/** The 1M range as the API sends it without warm-up: one bar per session. */
+function dailySeries(closes: number[]): CandleSeries {
+  return {
+    symbol: "AAPL",
+    interval: "1day",
+    exchangeTimezone: "America/New_York",
+    candles: closes.map((close, i) => ({
+      time: new Date(Date.UTC(2026, 9, i + 1, 4)).toISOString(),
+      open: close,
+      high: close,
+      low: close,
+      close,
+      volume: null,
+    })),
+    range: "1m",
+    freshness: freshness(),
+  };
+}
+
+const sparklineOf = (row: HTMLElement) => row.querySelector("polyline")?.closest("svg") ?? null;
 
 describe("WatchlistToggle", () => {
   it("adds and removes a symbol and persists it", async () => {
@@ -85,7 +117,7 @@ describe("WatchlistScreen", () => {
     expect(within(missing).getByText("ไม่มีข้อมูลราคา")).toBeInTheDocument();
     expect(within(missing).getByText("ไม่พบหุ้นนี้")).toBeInTheDocument();
     expect(within(missing).queryByText(/\$/)).toBeNull();
-    expect(row.querySelector("polyline")).toBeNull(); // no fabricated sparkline without candles
+    expect(sparklineOf(row)).toBeNull(); // no fabricated sparkline without candles
 
     await userEvent.click(screen.getByRole("button", { name: "แก้ไขรายการ" }));
     await userEvent.click(screen.getByRole("button", { name: "ลบ ZZZZ" }));
@@ -105,17 +137,44 @@ describe("WatchlistScreen", () => {
       },
     );
     mockQuotes(() => ok({ quotes: [quote({ symbol: "AAPL" })], unavailable: [] }));
-    const candleCalls = () =>
-      vi.mocked(fetch).mock.calls.filter(([u]) => String(u).includes("/candles")).length;
     renderWithProviders(<WatchlistScreen />, {
       repository: new MemoryWatchlistRepository(["AAPL"]),
     });
 
     await screen.findByText("Apple Inc.");
-    expect(candleCalls()).toBe(0);
+    expect(candleRequests()).toEqual([]);
     act(() => reveal());
-    await waitFor(() => expect(candleCalls()).toBe(1));
+    // A month of daily bars without warm-up, not today's intraday bars.
+    await waitFor(() => expect(candleRequests()).toEqual(["/api/v1/stocks/AAPL/candles?range=1m"]));
   });
+
+  it.each([
+    { line: "rises", closes: [180, 184, 189.32], change: -1.2, stroke: "stroke-up" },
+    { line: "falls", closes: [195, 191, 189.32], change: 1.86, stroke: "stroke-down" },
+    {
+      line: "ends where it began",
+      closes: [189.32, 192, 189.32],
+      change: 1.86,
+      stroke: "stroke-slate",
+    },
+  ])(
+    "colours a row's month line by the line itself when it $line, not by today's change",
+    async ({ closes, change, stroke }) => {
+      mockQuotes(
+        () => ok({ quotes: [quote({ change, changePercent: change / 2 })], unavailable: [] }),
+        () => ok(dailySeries(closes)),
+      );
+      renderWithProviders(<WatchlistScreen />, {
+        repository: new MemoryWatchlistRepository(["AAPL"]),
+      });
+
+      const row = (await screen.findByText("Apple Inc.")).closest("li")!;
+      await waitFor(() => expect(sparklineOf(row)).not.toBeNull());
+      expect(sparklineOf(row)).toHaveClass(stroke);
+      // One point per daily close.
+      expect(row.querySelector("polyline")!.getAttribute("points")!.split(" ")).toHaveLength(3);
+    },
+  );
 
   it("shows the API error when no quotes can be loaded", async () => {
     mockQuotes(() => apiError(503, "provider_not_configured"));

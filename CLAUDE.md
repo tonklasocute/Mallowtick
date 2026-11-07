@@ -89,7 +89,9 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   (the redirect to another `static*` host is followed without matching again). Initials
   stay underneath and take over when there is no logo, it fails, or the PWA is offline.
 - Freshness and `/health` name the vendor per kind of data (`Service.source(kind)`). Keep
-  that when adding a data kind; never label one vendor's data with another's name.
+  that when adding a data kind; never label one vendor's data with another's name. A response
+  that mixes vendors names both, joined by `+` (`twelvedata+finnhub`); `vendorLabel` shows
+  "Twelve Data + Finnhub".
 - Never sum Twelve Data free-plan intraday volumes. They cover only part of the market
   (about 50k shares in AAPL's first 5-minute bar), so totals are far too low. Session
   volume comes from the final daily bar after the close, or stays unknown.
@@ -108,6 +110,11 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   overlay; SVG attributes can't read CSS variables, so colour it with classes. There are no earnings markers on
   the chart, since no vendor here provides past report dates. The next report is shown as a
   badge under the price instead (`features/stock-detail/earnings-badge.tsx`, from Finnhub).
+- 1M, 3M and 1Y are cut from **one daily series per symbol** (`candles:<SYM>:daily`, 1,152
+  bars), kept until the close while the market is open. The session's bar is rebuilt from the
+  cached quote at read time (`withQuoteBar`, never fetches), so its volume is `null` during the
+  session with Finnhub quotes. Don't give daily ranges their own fetches again: that was ~21
+  credits per symbol a day, now ~2.
 - The chart shows **no TradingView logo** (`attributionLogo: false`, the user's decision).
   The licence allows that only because More → About shows the NOTICE text and a link to
   https://www.tradingview.com/. Keep that credit when editing the More screen.
@@ -163,6 +170,13 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   it shows "รอโควตา กำลังโหลดใหม่" while `useSectors` retries every 15 s. Don't raise
   `FINNHUB_MAX_WAIT` to hide it (a 60 s wait would hold requests open).
 
+## Watchlist screen
+
+- Row sparklines show one month of daily closes (`useDailySparkline`, `range=1m` without
+  warm-up), not today's intraday line: the API serves 1M from its daily series, about two
+  credits per symbol a day, where 1D cost ~78. Their colour follows the line over the month,
+  so a green line can sit next to a red day change. The Discover hero sparkline stays 1D.
+
 ## Portfolio screen
 
 - `/portfolio` ("พอร์ต", the 4th tab) follows the "Mallowtick พอร์ตของฉัน" design canvas
@@ -194,6 +208,12 @@ The project is worked on from both a Windows PC and a Mac.
   Finnhub quotes it uses `QUOTE_CACHE_TTL=60s`. Without `FINNHUB_API_KEY`, Twelve Data serves
   everything and its 8 credits/min run out quickly. `GET /api/v1/health` shows which vendor
   serves each kind of data.
+- `CACHE_FILE=./.cache/market-cache.json` (in `.env.example`; add it to an existing `.env` by
+  hand) keeps candles, market status and USD/THB across API restarts, so restarting after a
+  Go change doesn't spend those credits again. The file is gitignored (`services/api/.cache/`)
+  and is skipped when `TWELVEDATA_API_KEY` is unset. Delete it to force fresh fetches. Bump
+  `cacheSnapshotVersion` (`internal/market/service_snapshot.go`) when a saved cache's keys or
+  value type change.
 
 ### macOS
 
@@ -208,6 +228,15 @@ The project is worked on from both a Windows PC and a Mac.
   `corepack pnpm --filter @mallowtick/web dev`.
 - API: `go run ./cmd/api` in `services/api`, with the settings in the environment (see above).
 - Git Bash `sed -i` converts CRLF files to LF. Edit with the Edit tool or `perl -pi` instead.
+- `go test -race` needs cgo and there is no gcc; golangci-lint isn't installed. Both run on an
+  LF export of a commit (plain `git archive` applies `core.autocrlf` and gives CRLF again):
+  - `git -c core.autocrlf=false archive HEAD services/api | tar -x -C <dir>`
+  - race tests in Docker: `MSYS_NO_PATHCONV=1 docker run --rm -v "<dir>/services/api:/src"
+    -w /src golang:1.27 go test -race ./...`
+  - lint: `GOTOOLCHAIN=go1.27.2 GOBIN=<bin> go install
+    github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`, then
+    `GOTOOLCHAIN=go1.27.2 <bin>/golangci-lint run ./...` in `<dir>/services/api`. A
+    golangci-lint or staticcheck built with an older Go can't load this module (go 1.27).
 
 ## Known issues
 
@@ -221,7 +250,13 @@ The project is worked on from both a Windows PC and a Mac.
   `tr -d '\r' < file.go | gofmt -d`.
 - Unverified: whether Twelve Data's daily bar for today holds the full-market volume right
   after the close. During the session it holds the same partial volume as the intraday
-  bars, and closed-market candles are cached until the next open. If Stock Detail shows a
-  very low "ปริมาณซื้อขาย" in the evening, that is why. Check once after a close.
+  bars (the chart shows `null` instead, see Price chart). The daily series is refetched on
+  the first request after the close and then kept until the next open, so if Stock Detail
+  shows a very low "ปริมาณซื้อขาย" in the evening, that bar was still partial. Check once
+  after a close.
+- Unverified with the real API: the session's daily bar rebuilt from the Finnhub quote while
+  the market is open (unit tests only; added on a Saturday). Check during a session with
+  `LOG_LEVEL=debug`: 1M/3M/1Y should show today's price, `volume: null` on the last bar,
+  `freshness.provider` `twelvedata+finnhub`, and no `/time_series` call until the close.
 - ETF names from Finnhub search are upper case with a vendor prefix (e.g. "SS SPDR S&P
   500 ETF TRUST"), because Finnhub has no profile for ETFs.
