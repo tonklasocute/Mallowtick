@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 	_ "time/tzdata" // exchange time zones must resolve even without system tzdata
@@ -22,6 +23,10 @@ import (
 	"github.com/tonklasocute/mallowtick/services/api/internal/supportresistance"
 	httptransport "github.com/tonklasocute/mallowtick/services/api/internal/transport/http"
 )
+
+// cacheSaveInterval is how often the market cache is saved, so a crash loses
+// at most this much of what was fetched.
+const cacheSaveInterval = 5 * time.Minute
 
 func main() {
 	if err := run(); err != nil {
@@ -56,6 +61,17 @@ func run() error {
 		Logger:          log,
 	})
 
+	// The file holds Twelve Data's bars, status and rate only. Without its key
+	// they would be served in place of provider_not_configured, so skip it.
+	cacheFile := cfg.Market.CacheFile
+	if !cfg.ProviderConfigured() {
+		cacheFile = ""
+	}
+	if cacheFile != "" {
+		// Before the warm-up, so a restored status that is still fresh saves it.
+		loadCache(svc, cacheFile, log)
+	}
+
 	if cfg.ProviderConfigured() {
 		// Spend the market-status credit before any client arrives, so the first
 		// Discover load (overview batch + one sparkline) fits the per-minute budget.
@@ -80,6 +96,11 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	saveFinal := func() {}
+	if cacheFile != "" {
+		saveFinal = keepCacheSaved(ctx, svc, cacheFile, log)
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		log.Info("api listening", slog.String("addr", cfg.Addr), slog.String("env", cfg.Env),
@@ -100,10 +121,87 @@ func run() error {
 	log.Info("shutting down", slog.Duration("timeout", cfg.ShutdownTimeout))
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("shutdown: %w", err)
+	shutdownErr := srv.Shutdown(shutdownCtx)
+	saveFinal() // after Shutdown, so it keeps what the last requests fetched
+	if shutdownErr != nil {
+		return fmt.Errorf("shutdown: %w", shutdownErr)
 	}
 	return nil
+}
+
+// loadCache restores the market cache an earlier run saved. A missing file is
+// normal on the first start; a broken one is ignored and replaced at the next save.
+func loadCache(svc *market.Service, path string, log *slog.Logger) {
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		log.Info("no market cache file yet", slog.String("path", path))
+		return
+	}
+	if err != nil {
+		log.Warn("market cache not loaded", slog.String("path", path), slog.Any("error", err))
+		return
+	}
+	defer func() { _ = f.Close() }()
+	if err := svc.LoadCache(f); err != nil {
+		log.Warn("market cache not loaded", slog.String("path", path), slog.Any("error", err))
+	}
+}
+
+// keepCacheSaved saves the market cache every cacheSaveInterval until ctx is
+// done. The returned func waits for that loop to stop and saves once more.
+func keepCacheSaved(ctx context.Context, svc *market.Service, path string, log *slog.Logger) func() {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		tick := time.NewTicker(cacheSaveInterval)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+				saveCache(svc, path, log)
+			}
+		}
+	}()
+	return func() {
+		<-done
+		saveCache(svc, path, log)
+	}
+}
+
+func saveCache(svc *market.Service, path string, log *slog.Logger) {
+	if err := writeCacheFile(svc, path); err != nil {
+		log.Warn("market cache not saved", slog.String("path", path), slog.Any("error", err))
+		return
+	}
+	log.Debug("market cache saved", slog.String("path", path))
+}
+
+// writeCacheFile writes to a temporary file in the same directory and renames
+// it over path, so a crash mid-write never leaves a truncated cache file.
+func writeCacheFile(svc *market.Service, path string) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }() // fails harmlessly once renamed
+	if err := svc.SaveCache(tmp); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 func newLogger(cfg config.Config) *slog.Logger {

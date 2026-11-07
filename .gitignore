@@ -9,6 +9,7 @@ apps/web/next-env.d.ts
 
 # Go
 services/api/bin/
+services/api/.cache/
 
 # Environment (never commit secrets; .env.example files are tracked)
 .env

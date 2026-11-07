@@ -219,10 +219,19 @@ export function useLevels(symbol: string, range: ChartRange) {
   });
 }
 
+/** Sparklines are optional: a failure hides them and focus doesn't refetch them. */
+const SPARKLINE_OPTIONS = {
+  // One retry when credits ran out, after the minute resets (Retry-After).
+  retry: (count: number, err: Error) => count < 1 && isApiError(err) && err.code === "rate_limited",
+  retryDelay: (_: number, err: Error) =>
+    (isApiError(err) ? (err.retryAfterSeconds ?? 60) : 60) * 1000,
+  refetchOnWindowFocus: false,
+};
+
 /**
- * Intraday points for compact sparklines. Fetched once and kept for a while to
- * respect provider credit limits; a failure simply hides the sparkline. Each
- * symbol costs a provider credit, so lists pass `enabled` only for visible rows.
+ * Today's five-minute points for the Discover hero sparkline. Fetched once and kept
+ * for a while: the one-day range is cached on the server for only five minutes, so
+ * each refetch can cost a provider credit.
  */
 export function useSparkline(symbol: string, enabled = true) {
   return useQuery({
@@ -230,9 +239,26 @@ export function useSparkline(symbol: string, enabled = true) {
     queryFn: ({ signal }) => endpoints.candles(symbol, "1d", signal),
     enabled,
     staleTime: 10 * 60_000,
-    // One retry when credits ran out, after the minute resets (Retry-After).
-    retry: (count, err) => count < 1 && isApiError(err) && err.code === "rate_limited",
-    retryDelay: (_, err) => (isApiError(err) ? (err.retryAfterSeconds ?? 60) : 60) * 1000,
-    refetchOnWindowFocus: false,
+    ...SPARKLINE_OPTIONS,
+  });
+}
+
+/** How long a watchlist row keeps its month of daily points. */
+const DAILY_SPARKLINE_MS = 30 * 60_000;
+
+/**
+ * One month of daily points for watchlist rows, without warm-up bars. The server serves
+ * 1M from the daily series it keeps per symbol, so a row costs no extra provider credit
+ * once that series is cached. Lists pass `enabled` only for visible rows, and entries are
+ * kept while the list is off screen too.
+ */
+export function useDailySparkline(symbol: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.candles(symbol, "1m"),
+    queryFn: ({ signal }) => endpoints.candles(symbol, "1m", signal),
+    enabled,
+    staleTime: DAILY_SPARKLINE_MS,
+    gcTime: DAILY_SPARKLINE_MS,
+    ...SPARKLINE_OPTIONS,
   });
 }

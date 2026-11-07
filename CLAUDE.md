@@ -89,7 +89,9 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   (the redirect to another `static*` host is followed without matching again). Initials
   stay underneath and take over when there is no logo, it fails, or the PWA is offline.
 - Freshness and `/health` name the vendor per kind of data (`Service.source(kind)`). Keep
-  that when adding a data kind; never label one vendor's data with another's name.
+  that when adding a data kind; never label one vendor's data with another's name. A response
+  that mixes vendors names both, joined by `+` (`twelvedata+finnhub`); `vendorLabel` shows
+  "Twelve Data + Finnhub".
 - Never sum Twelve Data free-plan intraday volumes. They cover only part of the market
   (about 50k shares in AAPL's first 5-minute bar), so totals are far too low. Session
   volume comes from the final daily bar after the close, or stays unknown.
@@ -108,6 +110,11 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   overlay; SVG attributes can't read CSS variables, so colour it with classes. There are no earnings markers on
   the chart, since no vendor here provides past report dates. The next report is shown as a
   badge under the price instead (`features/stock-detail/earnings-badge.tsx`, from Finnhub).
+- 1M, 3M and 1Y are cut from **one daily series per symbol** (`candles:<SYM>:daily`, 1,152
+  bars), kept until the close while the market is open. The session's bar is rebuilt from the
+  cached quote at read time (`withQuoteBar`, never fetches), so its volume is `null` during the
+  session with Finnhub quotes. Don't give daily ranges their own fetches again: that was ~21
+  credits per symbol a day, now ~2.
 - The chart shows **no TradingView logo** (`attributionLogo: false`, the user's decision).
   The licence allows that only because More → About shows the NOTICE text and a link to
   https://www.tradingview.com/. Keep that credit when editing the More screen.
@@ -163,6 +170,13 @@ the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
   it shows "รอโควตา กำลังโหลดใหม่" while `useSectors` retries every 15 s. Don't raise
   `FINNHUB_MAX_WAIT` to hide it (a 60 s wait would hold requests open).
 
+## Watchlist screen
+
+- Row sparklines show one month of daily closes (`useDailySparkline`, `range=1m` without
+  warm-up), not today's intraday line: the API serves 1M from its daily series, about two
+  credits per symbol a day, where 1D cost ~78. Their colour follows the line over the month,
+  so a green line can sit next to a red day change. The Discover hero sparkline stays 1D.
+
 ## Portfolio screen
 
 - `/portfolio` ("พอร์ต", the 4th tab) follows the "Mallowtick พอร์ตของฉัน" design canvas
@@ -194,6 +208,12 @@ The project is worked on from both a Windows PC and a Mac.
   Finnhub quotes it uses `QUOTE_CACHE_TTL=60s`. Without `FINNHUB_API_KEY`, Twelve Data serves
   everything and its 8 credits/min run out quickly. `GET /api/v1/health` shows which vendor
   serves each kind of data.
+- `CACHE_FILE=./.cache/market-cache.json` (in `.env.example`; add it to an existing `.env` by
+  hand) keeps candles, market status and USD/THB across API restarts, so restarting after a
+  Go change doesn't spend those credits again. The file is gitignored (`services/api/.cache/`)
+  and is skipped when `TWELVEDATA_API_KEY` is unset. Delete it to force fresh fetches. Bump
+  `cacheSnapshotVersion` (`internal/market/service_snapshot.go`) when a saved cache's keys or
+  value type change.
 
 ### macOS
 

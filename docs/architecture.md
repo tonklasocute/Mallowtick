@@ -31,7 +31,7 @@ Design choices:
 
 - **Provider-specific code stays in the adapter.** Handlers depend on a `MarketService` interface. The service depends on `market.Provider`.
 - **Starts without credentials.** `market.Unconfigured` returns `ErrNotConfigured`, so the server runs and every data endpoint answers `provider_not_configured`. No substitute data exists anywhere in the code.
-- **No database.** V1 has no durable server-side state: the watchlist is client-side and market data is cached in memory. PostgreSQL would come with accounts or server-side watchlists.
+- **No database.** V1 has no durable server-side state: the watchlist is client-side and market data is cached in memory. The caches that cost Twelve Data credits can be saved to a JSON file (`CACHE_FILE`) so a restart doesn't refetch them; it is a cache, not a store. PostgreSQL would come with accounts or server-side watchlists.
 - **Concurrency.** Caches are mutex-guarded. Provider calls go through `singleflight` and are detached from the first caller's cancellation (bounded by the provider timeout), so concurrent waiters still get the result. Tests run with `-race`.
 
 ## Frontend (`apps/web`)

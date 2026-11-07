@@ -49,7 +49,7 @@ The web proxy adds `api_unreachable` (502) when the Go API can't be reached.
 | `1y` | 1day | 252 |
 | `5y` | 1week | 260 |
 
-Each range is fetched with up to 900 earlier warm-up bars in the same provider request (one credit), so indicators such as a 300-bar EMA have converged by the first visible bar.
+Each range is fetched with up to 900 earlier warm-up bars in the same provider request (one credit), so indicators such as a 300-bar EMA have converged by the first visible bar. `1m`, `3m` and `1y` are cut from one daily series per symbol, and while the market is open their latest bar is built from the symbol's cached quote (see [market-data.md](market-data.md#polling-strategy-no-streaming-in-v1)); `freshness.provider` then names both vendors, e.g. `twelvedata+finnhub`.
 
 `freshness` objects are described in [market-data.md](market-data.md#freshness-model). Timestamps are RFC 3339. Candle times carry the exchange offset.
 

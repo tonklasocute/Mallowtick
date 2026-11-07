@@ -314,12 +314,24 @@ func (s *Service) Instrument(ctx context.Context, symbol Symbol) (Instrument, er
 // closedFor reports how long the market stays closed, judged only from the
 // cached market status so it never spends provider credits. ok is false while
 // the market is open or the next open is unknown.
-func (s *Service) closedFor() (time.Duration, bool) {
+func (s *Service) closedFor() (time.Duration, bool) { return s.stateLeft(false) }
+
+// openFor reports how long the market stays open, judged like closedFor. ok is
+// false while the market is closed or the close is unknown.
+func (s *Service) openFor() (time.Duration, bool) { return s.stateLeft(true) }
+
+// stateLeft is the time until the market leaves the given state: the cached
+// status's countdown less the time since the status was stored.
+func (s *Service) stateLeft(open bool) (time.Duration, bool) {
 	e, state := s.status.Get(statusKey)
-	if state != cache.Fresh || e.Value.IsOpen || e.Value.OpensInSeconds == nil {
+	countdown := e.Value.OpensInSeconds
+	if open {
+		countdown = e.Value.ClosesInSeconds
+	}
+	if state != cache.Fresh || e.Value.IsOpen != open || countdown == nil {
 		return 0, false
 	}
-	left := time.Duration(*e.Value.OpensInSeconds)*time.Second - s.cfg.Now().Sub(e.StoredAt)
+	left := time.Duration(*countdown)*time.Second - s.cfg.Now().Sub(e.StoredAt)
 	return left, left > 0
 }
 
@@ -346,6 +358,18 @@ func (s *Service) candleTTL(spec RangeSpec) func(CandleSeries) time.Duration {
 		}
 		return spec.CacheTTL
 	}
+}
+
+// dailyTTL keeps the shared daily series until the close while the market is
+// open: the cached quote refreshes the session's bar in between (withQuoteBar),
+// so a refetch would only spend a credit. The first fetch after the close then
+// brings the final bar, with the session's full volume. Otherwise it is kept
+// like other series, until the next open while the market is closed.
+func (s *Service) dailyTTL(series CandleSeries) time.Duration {
+	if d, ok := s.openFor(); ok {
+		return d
+	}
+	return s.candleTTL(dailySeries)(series)
 }
 
 // statusTTLFor keeps the status until the provider-reported next open or
@@ -476,11 +500,13 @@ func (s *Service) cachedMarketOpen() *bool {
 }
 
 // sessionVolume fills in the session's volume for vendors whose quotes lack
-// it, from the session's daily bar already cached for the chart, once the
-// market has closed and the bar is final. It never fetches. Intraday bars are
-// not summed: on Twelve Data's free plan their volumes cover only part of the
-// market (AAPL's first 5-minute bar showed ~50k shares), so the total would be
-// far too low. During the session the volume therefore stays unknown.
+// it, from the daily series already cached for the chart, once the market has
+// closed and the bar is final. The series is kept until the close while the
+// market is open (dailyTTL), so a fresh one after the close was fetched after
+// it. It never fetches. Intraday bars are not summed: on Twelve Data's free
+// plan their volumes cover only part of the market (AAPL's first 5-minute bar
+// showed ~50k shares), so the total would be far too low. During the session
+// the volume therefore stays unknown.
 func (s *Service) sessionVolume(symbol Symbol, asOf *time.Time) *int64 {
 	if asOf == nil {
 		return nil
@@ -488,12 +514,8 @@ func (s *Service) sessionVolume(symbol Symbol, asOf *time.Time) *int64 {
 	if _, closed := s.closedFor(); !closed {
 		return nil
 	}
-	for _, rng := range []Range{Range1M, Range3M, Range1Y} {
-		if e, state := s.candles.Get(candleKey(symbol, rng)); state == cache.Fresh {
-			if v := dailyVolumeOn(e.Value, *asOf); v != nil {
-				return v
-			}
-		}
+	if e, state := s.candles.Get(dailyKey(symbol)); state == cache.Fresh {
+		return dailyVolumeOn(e.Value, *asOf)
 	}
 	return nil
 }
@@ -505,15 +527,27 @@ func dailyVolumeOn(series CandleSeries, asOf time.Time) *int64 {
 	if last < 0 || series.Interval != Interval1Day {
 		return nil
 	}
-	loc, err := time.LoadLocation(series.ExchangeTimezone)
-	if err != nil {
-		loc, _ = time.LoadLocation("America/New_York")
-	}
+	loc := exchangeLocation(series)
 	bar := series.Candles[last]
 	if bar.Time.In(loc).Format(time.DateOnly) != asOf.In(loc).Format(time.DateOnly) {
 		return nil
 	}
 	return bar.Volume
+}
+
+// exchangeLocation is the time zone that daily bars and session dates are in,
+// New York when the vendor names none that resolves.
+func exchangeLocation(series CandleSeries) *time.Location {
+	if series.ExchangeTimezone != "" {
+		if loc, err := time.LoadLocation(series.ExchangeTimezone); err == nil {
+			return loc
+		}
+	}
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		return time.UTC
+	}
+	return loc
 }
 
 // EarningsResult is the next scheduled earnings report for a symbol; Next is
@@ -716,25 +750,90 @@ func candleKey(symbol Symbol, rng Range) string {
 	return "candles:" + string(symbol) + ":" + string(rng)
 }
 
+// dailyKey is the cache key of the series that the daily ranges share.
+func dailyKey(symbol Symbol) string {
+	return "candles:" + string(symbol) + ":daily"
+}
+
 // Candles returns the bars covering a UI range.
 func (s *Service) Candles(ctx context.Context, symbol Symbol, rng Range) (CandlesResult, error) {
 	spec := rng.Spec()
-	e, stale, err := load(ctx, s, s.candles, candleKey(symbol, rng), s.candleTTL(spec), func(fctx context.Context) (CandleSeries, error) {
-		return s.provider.Candles(fctx, symbol, spec.Interval, spec.Bars+WarmupBars)
+	daily := spec.Interval == Interval1Day
+	key, req, ttl := candleKey(symbol, rng), spec, s.candleTTL(spec)
+	if daily {
+		key, req, ttl = dailyKey(symbol), dailySeries, s.dailyTTL
+	}
+	e, stale, err := load(ctx, s, s.candles, key, ttl, func(fctx context.Context) (CandleSeries, error) {
+		return s.provider.Candles(fctx, symbol, req.Interval, req.Bars+WarmupBars)
 	})
 	if err != nil {
 		return CandlesResult{}, err
 	}
 	series := e.Value
+	var q cache.Entry[Quote]
+	patched := false
+	if daily {
+		series, q, patched = s.withQuoteBar(symbol, series, e.StoredAt)
+	}
 	split := max(len(series.Candles)-spec.Bars, 0)
-	visible, warmup := series.Candles[split:], series.Candles[:split]
+	visible, warmup := series.Candles[split:], series.Candles[max(split-WarmupBars, 0):split]
 	series.Candles = visible
 	var asOf *time.Time
 	if n := len(visible); n > 0 {
 		t := visible[n-1].Time
 		asOf = &t
 	}
-	return CandlesResult{CandleSeries: series, Warmup: warmup, Range: rng, Freshness: s.freshness(KindCandles, asOf, e.StoredAt, stale)}, nil
+	fresh := s.freshness(KindCandles, asOf, e.StoredAt, stale)
+	if patched {
+		// The quote is the newest data in the response, and its vendor is named
+		// too when it is not the bar vendor.
+		fresh.AsOf = q.Value.AsOf
+		if q.StoredAt.After(e.StoredAt) {
+			fresh.FetchedAt = q.StoredAt.UTC()
+		}
+		if name := s.source(KindQuotes).Name(); name != fresh.Provider {
+			fresh.Provider += "+" + name
+		}
+	}
+	return CandlesResult{CandleSeries: series, Warmup: warmup, Range: rng, Freshness: fresh}, nil
+}
+
+// withQuoteBar returns a daily series whose latest session's bar comes from
+// the symbol's cached quote, so the series can be kept until the close and
+// still end at the current price. It never fetches a quote and never changes
+// the cached series. The quote replaces the last bar only when it is newer
+// than the series: one fetched later (e.g. right after the close) already has
+// the quote's trades and the vendor's volume. The bar takes the quote's volume,
+// nil when it has none, never the vendor bar's: during the session that covers
+// only part of the market. The bool reports whether the quote was used.
+func (s *Service) withQuoteBar(symbol Symbol, series CandleSeries, fetchedAt time.Time) (CandleSeries, cache.Entry[Quote], bool) {
+	last := len(series.Candles) - 1
+	if last < 0 || series.Interval != Interval1Day {
+		return series, cache.Entry[Quote]{}, false
+	}
+	e, state := s.quotes.Get(string(symbol))
+	q := e.Value
+	if state != cache.Fresh || q.AsOf == nil || q.Open == nil || q.High == nil || q.Low == nil {
+		return series, cache.Entry[Quote]{}, false
+	}
+	loc := exchangeLocation(series)
+	barDay := series.Candles[last].Time.In(loc).Format(time.DateOnly)
+	quoteDay := q.AsOf.In(loc).Format(time.DateOnly)
+	bar := Candle{Time: series.Candles[last].Time, Open: *q.Open, High: *q.High, Low: *q.Low, Close: q.Price, Volume: q.Volume}
+	switch {
+	case quoteDay == barDay && q.AsOf.After(fetchedAt):
+		series.Candles = slices.Clone(series.Candles)
+		series.Candles[last] = bar
+	case quoteDay > barDay:
+		// A session the series has no bar for yet; daily bars open at midnight
+		// exchange time.
+		y, m, d := q.AsOf.In(loc).Date()
+		bar.Time = time.Date(y, m, d, 0, 0, 0, 0, loc)
+		series.Candles = append(slices.Clip(series.Candles), bar)
+	default:
+		return series, cache.Entry[Quote]{}, false
+	}
+	return series, e, true
 }
 
 // Levels computes support and resistance from the same candles the chart for

@@ -107,10 +107,10 @@ Every quote, candle series, levels result, and status response carries `freshnes
 
 | Field | Meaning |
 |---|---|
-| `provider` | Adapter name (`twelvedata`). |
+| `provider` | Adapter name (`twelvedata`). Two names joined by `+` when the response combines vendors: a daily chart whose latest bar comes from another vendor's quote is `twelvedata+finnhub` (bar vendor first). |
 | `latency` | **Declared by the operator** via `MARKET_DATA_LATENCY` (`realtime` / `delayed` / `eod` / `unknown`). Never inferred from a response. Defaults to `unknown`. |
-| `asOf` | Provider timestamp. Quotes: Twelve Data `last_quote_at`. Candles/levels: open time of the last bar. `null` when the provider didn't report one; it is never replaced with the fetch time. |
-| `fetchedAt` | When the API server received the data from the provider (UTC). |
+| `asOf` | Provider timestamp. Quotes: Twelve Data `last_quote_at`. Candles/levels: open time of the last bar, or the quote's time when the latest daily bar was taken from the quote. `null` when the provider didn't report one; it is never replaced with the fetch time. |
+| `fetchedAt` | When the API server received the data from the provider (UTC); the later of the bars and the quote when both are in the response. |
 | `stale` | `true` when the provider request failed and an older cached value is being served. |
 
 The client labels data from these fields (`src/lib/freshness.ts`):
@@ -130,13 +130,16 @@ Streaming is not implemented because the Basic and Grow plans only stream a hand
 - **Server cache bounds provider usage** regardless of how many clients poll.
   - **Market status** is kept until the provider-reported next open or close (at most 6 h), so it costs about two credits a day. Countdowns are recomputed from the cached value's age. The API fetches it once at startup so the first Discover load fits the per-minute budget.
   - **Quotes** are cached per symbol for `QUOTE_CACHE_TTL` while the market is open. Closed-market quotes are kept until the next open; `QUOTE_CACHE_TTL_CLOSED` (15m) applies only while the market status is unknown.
-  - **Candles** are cached per symbol+range for about one bar while the market is open: 5 min (1D), 15 min (1W), 1 h (1M/3M/1Y), 6 h (5Y). When the market is closed they are kept until the next open. Each fetch includes 900 warm-up bars for the chart's EMA lines; Twelve Data charges one credit per `/time_series` request regardless of `outputsize` (checked with `/api_usage` on 2026-10-26: 1,200 daily bars cost 1 credit).
+  - **Candles** for 1D, 1W and 5Y are cached per symbol+range for about one bar while the market is open: 5 min (1D), 15 min (1W), 6 h (5Y). Each fetch includes 900 warm-up bars for the chart's EMA lines; Twelve Data charges one credit per `/time_series` request regardless of `outputsize` (checked with `/api_usage` on 2026-10-26: 1,200 daily bars cost 1 credit).
+  - **Daily candles** (1M, 3M, 1Y) share one series per symbol (`candles:<SYM>:daily`): 252 + 900 warm-up daily bars in one request, which each range slices. While the market is open it is kept until the close (from the cached status; 1 h when the status isn't cached), and the session's bar is rebuilt at read time from the symbol's fresh cached quote (open, high, low, price), never by fetching. A bar taken from a Finnhub quote has `volume: null`, never the partial intraday volume. The quote replaces the last bar only when it is newer than the series, so the series fetched after the close keeps the final bar and its full volume. The cached series itself is never changed.
+  - Outside the session every candle series is kept until the next open.
   - **Search** results are cached for 24 h.
 - **Concurrent identical requests share one provider call** (singleflight). Batch quotes only fetch the symbols missing from cache.
 - **A local credit budget** (`TWELVEDATA_CREDITS_PER_MINUTE`, `internal/market/twelvedata/budget.go`) books credits before each request the way Twelve Data counts them: at most N credits in any **sliding 60-second window**, not per calendar minute and not as a refilling token bucket. Both of those let a 9th credit through and the provider answered 429 (observed: 1 credit at :43, 7 at :54, 1 at :01 of the next minute). A request waits up to `TWELVEDATA_MAX_WAIT` (10s) for room and then fails with `rate_limited` without calling the provider. If the provider still answers 429 (e.g. another app uses the same key), the window is marked full.
 - **Batch quotes take what fits:** a batch is fetched in the order given, only as far as credits allow. The rest come back in `unavailable` with reason `rate_limited`, and the next poll fills them in. Discover lists benchmarks first, so they win.
 - **Stale fallback:** if a refresh fails (other than "not found"), a value fetched within `STALE_RETENTION` is returned with `stale: true`.
-- **Client:** visible screens refetch quotes every `NEXT_PUBLIC_QUOTE_REFRESH_SECONDS` (60s) and when the app regains focus; these hit the server cache, not the provider. Hidden tabs don't poll. 1D charts refresh every 2 minutes; longer ranges refresh on focus only. Sparklines are fetched once a row is on screen and kept for 10 minutes; watchlist rows hidden on narrow phones never fetch one.
+- **Restarts keep the cache:** with `CACHE_FILE` set (`.env.example`: `./.cache/market-cache.json`, i.e. `services/api/.cache/`), the API saves the caches that cost Twelve Data credits (candles, market status, USD/THB) every 5 minutes and on shutdown, and restores them at startup with their original fetch and expiry times. A restored status that is still fresh also skips the startup status credit. The file is used only when `TWELVEDATA_API_KEY` is set, so a keyless API still reports `provider_not_configured`. A missing or unreadable file is ignored and replaced at the next save.
+- **Client:** visible screens refetch quotes every `NEXT_PUBLIC_QUOTE_REFRESH_SECONDS` (60s) and when the app regains focus; these hit the server cache, not the provider. Hidden tabs don't poll. 1D charts refresh every 2 minutes; longer ranges refresh on focus only. The Discover hero sparkline is today's 1D line, kept for 10 minutes. Watchlist rows draw one month of daily closes (`range=1m` without warm-up), fetched once a row is on screen and kept for 30 minutes; the line's colour follows its own direction over the month, not today's change. Rows hidden on narrow phones never fetch one.
 
 ### Credit budget on the free plan
 
@@ -145,8 +148,9 @@ The free plan allows 8 credits/minute and 800/day, and a batch quote costs one c
 - **First Discover load:** 7 credits for 3 benchmarks + 4 popular stocks, plus 1 for the hero sparkline. With the startup status credit in the same 60 s, the sparkline waits for the window and the client retries it after `Retry-After`.
 - **Discover left open all session** with `QUOTE_CACHE_TTL=5m` (the `.env.example` value): about 8 credits every 5 minutes, ≈ 620 over a 6.5 h session. With 60s it would be about 3,000, far over the daily cap.
 - **Market closed:** cached quotes and candles cost nothing until the next open.
-- **Stock Detail:** 1 credit per range first viewed (levels reuse the chart's candles). The quote is usually already cached from Discover.
-- **Watchlist:** 1 credit per symbol not yet cached, plus 1 per sparkline that scrolls into view.
+- **Stock Detail:** 1 credit for the daily series (1M, 3M and 1Y together; levels reuse it), about 2 a day per symbol (one during the session, one after the close). 1D, 1W and 5Y cost 1 credit each when first viewed and then about one per bar while someone keeps them open (~78/day for 1D, ~26 for 1W). With Finnhub keys the quote costs no Twelve Data credit.
+- **Watchlist:** the quotes come from Finnhub; each row's sparkline is the 1M daily series, so it is free once that symbol's series is cached.
+- **Restarts:** with `CACHE_FILE` set, nothing already fetched is fetched again.
 
 To stretch the budget further, raise `QUOTE_CACHE_TTL` or trim `POPULAR_SYMBOLS`. A paid plan removes the daily cap.
 

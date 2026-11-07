@@ -1,12 +1,16 @@
 import { cn } from "@/lib/cn";
+import { direction, type Direction } from "@/lib/format";
 import type { Candle } from "@/types/api";
 
 interface SparklineProps {
   candles: Candle[];
   width?: number;
   height?: number;
-  /** Color by the quote's day change so the line never contradicts the change label. */
-  trend?: "up" | "down" | "flat" | "unknown";
+  /**
+   * Colour to use instead of the line's own direction (last close against the first),
+   * e.g. the quote's day change on a one-day line so it never contradicts the change label.
+   */
+  trend?: Direction;
   className?: string;
 }
 
@@ -26,7 +30,7 @@ export function Sparkline({ candles, width = 72, height = 28, trend, className }
     })
     .join(" ");
   const dir =
-    trend && trend !== "unknown" ? trend : closes[closes.length - 1]! >= closes[0]! ? "up" : "down";
+    trend && trend !== "unknown" ? trend : direction(closes[closes.length - 1]! - closes[0]!);
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}

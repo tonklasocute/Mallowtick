@@ -80,3 +80,14 @@ func TestParseRange(t *testing.T) {
 		}
 	}
 }
+
+func TestDailySeriesCoversEveryDailyRange(t *testing.T) {
+	for _, r := range Ranges {
+		if spec := r.Spec(); spec.Interval == Interval1Day && spec.Bars > dailySeries.Bars {
+			t.Errorf("range %s needs %d bars, the daily series has %d", r, spec.Bars, dailySeries.Bars)
+		}
+	}
+	if dailySeries.Interval != Interval1Day || dailySeries.Bars != Range1Y.Spec().Bars || dailySeries.CacheTTL <= 0 {
+		t.Fatalf("the daily series should be as long as 1Y, the longest daily range: %+v", dailySeries)
+	}
+}

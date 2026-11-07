@@ -16,23 +16,23 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StateMessage } from "@/components/ui/state-message";
 import { useInView } from "@/hooks/use-in-view";
-import { direction } from "@/lib/format";
 import { unavailableReasonLabel } from "@/lib/unavailable-reason";
 import { isApiError } from "@/services/api/client";
-import { useQuotes, useSparkline } from "@/services/api/queries";
-import type { Quote } from "@/types/api";
+import { useDailySparkline, useQuotes } from "@/services/api/queries";
 
 import { useStorageDescription, useWatchlist } from "./use-watchlist";
 
-/** Loads only once its row is on screen (and not on narrow phones, where it is hidden). */
-function RowSparkline({ quote }: { quote: Quote }) {
+/**
+ * One month of daily closes, coloured by the line's own direction rather than today's
+ * change next to it. Loads only once its row is on screen (and not on narrow phones,
+ * where it is hidden).
+ */
+function RowSparkline({ symbol }: { symbol: string }) {
   const [ref, inView] = useInView<HTMLSpanElement>();
-  const { data } = useSparkline(quote.symbol, inView);
+  const { data } = useDailySparkline(symbol, inView);
   return (
     <span ref={ref} className="hidden min-[360px]:block">
-      {data && data.candles.length >= 2 && (
-        <Sparkline candles={data.candles} trend={direction(quote.changePercent ?? quote.change)} />
-      )}
+      {data && data.candles.length >= 2 && <Sparkline candles={data.candles} />}
     </span>
   );
 }
@@ -129,7 +129,7 @@ export function WatchlistScreen() {
                         key={symbol}
                         quote={q}
                         receivedAt={quotes.dataUpdatedAt}
-                        middle={<RowSparkline quote={q} />}
+                        middle={<RowSparkline symbol={symbol} />}
                         trailing={remove}
                       />
                     );

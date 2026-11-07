@@ -32,6 +32,9 @@ func TestDefaults(t *testing.T) {
 	if len(cfg.CORSOrigins) != 1 || cfg.CORSOrigins[0] != "http://localhost:3000" {
 		t.Fatalf("cors = %v", cfg.CORSOrigins)
 	}
+	if cfg.Market.CacheFile != "" {
+		t.Fatalf("the cache file must be opt-in, got %q", cfg.Market.CacheFile)
+	}
 }
 
 func TestOverrides(t *testing.T) {
@@ -42,9 +45,13 @@ func TestOverrides(t *testing.T) {
 		"POPULAR_SYMBOLS":         "aapl, nvda",
 		"MARKET_OVERVIEW_SYMBOLS": "none",
 		"API_CORS_ORIGINS":        "https://mallowtick.example.com/, http://localhost:3000",
+		"CACHE_FILE":              " ./.cache/market-cache.json ",
 	}))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if cfg.Market.CacheFile != "./.cache/market-cache.json" {
+		t.Fatalf("cache file = %q", cfg.Market.CacheFile)
 	}
 	if !cfg.ProviderConfigured() || cfg.Market.Latency != market.LatencyRealtime || cfg.Market.QuoteTTL != 2*time.Minute {
 		t.Fatalf("unexpected %+v", cfg)
