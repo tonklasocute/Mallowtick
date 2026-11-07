@@ -63,6 +63,13 @@ Twelve Data counts credits in a **sliding 60-second window**, verified with the 
 counter: both let a 9th credit through, and the provider returns 429. To see real usage, run
 the API with `LOG_LEVEL=debug`; it logs each provider call with its credits.
 
+Each client (IP, or IPv6 /64) also has a share: 200 Twelve Data credits a day, 45 Finnhub calls
+a minute, 120 requests a minute (`internal/clientlimit`, `CLIENT_*` in `.env.example`). A new
+vendor adapter must call `market.TakeAllowance` before its own budget, or its calls go
+unshared. Clients are told apart through `X-Forwarded-For` from the web app's proxy route,
+trusted only from `TRUSTED_PROXIES`; in production the web app needs a reverse proxy in front
+that sets that header (see docs/architecture.md).
+
 ## Market data vendors
 
 - With `FINNHUB_API_KEY` set, **Finnhub** serves quotes, search and the earnings calendar
@@ -226,7 +233,14 @@ The project is worked on from both a Windows PC and a Mac.
 
 - pnpm is not installed globally; run it through corepack: `corepack pnpm install`,
   `corepack pnpm --filter @mallowtick/web dev`.
-- API: `go run ./cmd/api` in `services/api`, with the settings in the environment (see above).
+- The user's terminal is Windows PowerShell 5.1: no `&&`, and `make dev-api` doesn't work
+  (GnuWin32 make, no bash). Give PowerShell commands. API, from the repo root:
+  ```powershell
+  cd services/api
+  Get-Content .env | Where-Object { $_ -match '^\s*[A-Za-z_]\w*=' } | ForEach-Object { $k, $v = $_ -split '=', 2; Set-Item "env:$($k.Trim())" $v.Trim() }
+  go run ./cmd/api
+  ```
+  Web, in a second terminal from the repo root: `corepack pnpm --filter @mallowtick/web dev`.
 - Git Bash `sed -i` converts CRLF files to LF. Edit with the Edit tool or `perl -pi` instead.
 - `go test -race` needs cgo and there is no gcc; golangci-lint isn't installed. Both run on an
   LF export of a commit (plain `git archive` applies `core.autocrlf` and gives CRLF again):

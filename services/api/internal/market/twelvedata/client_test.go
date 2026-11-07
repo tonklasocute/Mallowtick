@@ -173,6 +173,43 @@ func TestLocalRateLimitFailsFast(t *testing.T) {
 	}
 }
 
+// shareLeft is a client allowance with units left per vendor.
+type shareLeft map[string]int
+
+func (s shareLeft) Take(vendor string, units int) bool {
+	if s[vendor] < units {
+		return false
+	}
+	s[vendor] -= units
+	return true
+}
+
+func TestClientAllowanceIsSpentBeforeTheProvider(t *testing.T) {
+	var calls atomic.Int32
+	c := newTestClient(t, map[string]http.HandlerFunc{
+		"/quote": func(w http.ResponseWriter, _ *http.Request) {
+			calls.Add(1)
+			_, _ = w.Write([]byte(`{"symbol":"AAPL","close":"1"}`))
+		},
+	}, 8)
+	share := shareLeft{ProviderName: 1}
+	ctx := market.WithAllowance(context.Background(), share)
+	if _, err := c.Quotes(ctx, []market.Symbol{"AAPL"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := c.Quotes(ctx, []market.Symbol{"AAPL"})
+	if !errors.Is(err, market.ErrRateLimited) {
+		t.Fatalf("second call: got %v, want ErrRateLimited", err)
+	}
+	if calls.Load() != 1 || c.budget.Available() != 7 {
+		t.Fatalf("a client over its share must not reach the provider or the shared window; calls = %d, credits left = %d",
+			calls.Load(), c.budget.Available())
+	}
+	if _, err := c.Quotes(context.Background(), []market.Symbol{"AAPL"}); err != nil {
+		t.Fatalf("calls without a client allowance are not limited: %v", err)
+	}
+}
+
 func TestProviderRateLimitStopsRequestsForTheMinute(t *testing.T) {
 	var calls atomic.Int32
 	c := newTestClient(t, map[string]http.HandlerFunc{

@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/tonklasocute/mallowtick/services/api/internal/clientlimit"
 	"github.com/tonklasocute/mallowtick/services/api/internal/market"
 )
 
@@ -38,6 +39,11 @@ type Options struct {
 	Logger         *slog.Logger
 	CORSOrigins    []string
 	RequestTimeout time.Duration
+	// Limiter caps each client's requests and provider spending; nil turns
+	// that off. /health is never limited.
+	Limiter *clientlimit.Limiter
+	// TrustedProxies may name the client in X-Forwarded-For (IPs or CIDRs).
+	TrustedProxies []string
 	Now            func() time.Time
 }
 
@@ -55,7 +61,7 @@ func NewRouter(opts Options) http.Handler {
 	h := &handlers{svc: opts.Service, log: opts.Logger, now: opts.Now}
 
 	r := gin.New()
-	_ = r.SetTrustedProxies(nil)
+	_ = r.SetTrustedProxies(opts.TrustedProxies) // validated by config
 	r.HandleMethodNotAllowed = true
 	r.Use(withRequestID(), withLogging(opts.Logger), withRecovery(opts.Logger), withCORS(opts.CORSOrigins), withNoStore())
 	r.NoRoute(func(c *gin.Context) { writeError(c, http.StatusNotFound, "not_found", "Unknown endpoint.") })
@@ -65,20 +71,24 @@ func NewRouter(opts Options) http.Handler {
 
 	v1 := r.Group("/api/v1", withTimeout(opts.RequestTimeout))
 	v1.GET("/health", h.health)
-	v1.GET("/market/status", h.marketStatus)
-	v1.GET("/market/overview", h.overview)
-	v1.GET("/market/sectors", h.sectors)
-	v1.GET("/fx/usd-thb", h.exchangeRate)
-	v1.GET("/stocks/search", h.search)
-	v1.GET("/stocks/quotes", h.quotes)
-	v1.GET("/stocks/:symbol", h.instrument)
-	v1.GET("/stocks/:symbol/quote", h.quote)
-	v1.GET("/stocks/:symbol/candles", h.candles)
-	v1.GET("/stocks/:symbol/levels", h.levels)
-	v1.GET("/stocks/:symbol/earnings", h.earnings)
-	v1.GET("/stocks/:symbol/earnings/history", h.earningsHistory)
-	v1.GET("/stocks/:symbol/fundamentals", h.fundamentals)
-	v1.GET("/stocks/:symbol/recommendations", h.recommendations)
+	api := v1
+	if opts.Limiter != nil {
+		api = v1.Group("", withClientLimits(opts.Limiter))
+	}
+	api.GET("/market/status", h.marketStatus)
+	api.GET("/market/overview", h.overview)
+	api.GET("/market/sectors", h.sectors)
+	api.GET("/fx/usd-thb", h.exchangeRate)
+	api.GET("/stocks/search", h.search)
+	api.GET("/stocks/quotes", h.quotes)
+	api.GET("/stocks/:symbol", h.instrument)
+	api.GET("/stocks/:symbol/quote", h.quote)
+	api.GET("/stocks/:symbol/candles", h.candles)
+	api.GET("/stocks/:symbol/levels", h.levels)
+	api.GET("/stocks/:symbol/earnings", h.earnings)
+	api.GET("/stocks/:symbol/earnings/history", h.earningsHistory)
+	api.GET("/stocks/:symbol/fundamentals", h.fundamentals)
+	api.GET("/stocks/:symbol/recommendations", h.recommendations)
 	return r
 }
 

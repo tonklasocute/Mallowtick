@@ -35,6 +35,31 @@ func TestDefaults(t *testing.T) {
 	if cfg.Market.CacheFile != "" {
 		t.Fatalf("the cache file must be opt-in, got %q", cfg.Market.CacheFile)
 	}
+	want := Clients{RequestsPerMinute: 120, TwelveDataPerDay: 200, FinnhubPerMinute: 45}
+	if c := cfg.Clients; c.RequestsPerMinute != want.RequestsPerMinute || c.TwelveDataPerDay != want.TwelveDataPerDay ||
+		c.FinnhubPerMinute != want.FinnhubPerMinute || strings.Join(c.TrustedProxies, ",") != "127.0.0.1,::1" {
+		t.Fatalf("client limits = %+v", c)
+	}
+}
+
+func TestClientLimitOverrides(t *testing.T) {
+	cfg, err := Load(env(map[string]string{
+		"CLIENT_REQUESTS_PER_MINUTE":        "0",
+		"CLIENT_TWELVEDATA_CREDITS_PER_DAY": "50",
+		"TRUSTED_PROXIES":                   "172.18.0.0/16, 10.0.0.2",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := cfg.Clients
+	if c.RequestsPerMinute != 0 || c.TwelveDataPerDay != 50 || c.FinnhubPerMinute != 45 ||
+		strings.Join(c.TrustedProxies, ",") != "172.18.0.0/16,10.0.0.2" {
+		t.Fatalf("client limits = %+v", c)
+	}
+	cfg, err = Load(env(map[string]string{"TRUSTED_PROXIES": "none"}))
+	if err != nil || cfg.Clients.TrustedProxies != nil {
+		t.Fatalf("none trusts no proxy: %v %v", cfg.Clients.TrustedProxies, err)
+	}
 }
 
 func TestOverrides(t *testing.T) {
@@ -73,11 +98,14 @@ func TestReportsAllInvalidValues(t *testing.T) {
 		"POPULAR_SYMBOLS":               "AAPL,???",
 		"API_CORS_ORIGINS":              "*",
 		"LOG_LEVEL":                     "loud",
+		"CLIENT_REQUESTS_PER_MINUTE":    "-1",
+		"TRUSTED_PROXIES":               "proxy.local",
 	}))
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	for _, key := range []string{"API_ADDR", "QUOTE_CACHE_TTL", "TWELVEDATA_CREDITS_PER_MINUTE", "MARKET_DATA_LATENCY", "POPULAR_SYMBOLS", "API_CORS_ORIGINS", "LOG_LEVEL"} {
+	for _, key := range []string{"API_ADDR", "QUOTE_CACHE_TTL", "TWELVEDATA_CREDITS_PER_MINUTE", "MARKET_DATA_LATENCY",
+		"POPULAR_SYMBOLS", "API_CORS_ORIGINS", "LOG_LEVEL", "CLIENT_REQUESTS_PER_MINUTE", "TRUSTED_PROXIES"} {
 		if !strings.Contains(err.Error(), key) {
 			t.Errorf("error should mention %s:\n%v", key, err)
 		}
