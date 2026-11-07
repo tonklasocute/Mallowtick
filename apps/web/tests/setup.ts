@@ -4,5 +4,6 @@ import { afterEach } from "vitest";
 
 afterEach(() => {
   cleanup();
-  window.localStorage.clear();
+  // Server-side tests (route handlers) run in the node environment, without a window.
+  if (typeof window !== "undefined") window.localStorage.clear();
 });

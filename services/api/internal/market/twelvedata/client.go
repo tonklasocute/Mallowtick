@@ -151,6 +151,11 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, credit
 // spend books credits in the per-minute budget, failing fast with
 // ErrRateLimited instead of queueing requests for longer than maxWait.
 func (c *Client) spend(ctx context.Context, credits int) error {
+	// The client's share first, so one client running out never holds a place
+	// in the shared window.
+	if err := market.TakeAllowance(ctx, ProviderName, credits); err != nil {
+		return err
+	}
 	err := c.budget.Spend(ctx, credits, c.maxWait)
 	if errors.Is(err, ratebudget.ErrNoRoom) {
 		return fmt.Errorf("%w: %w", market.ErrRateLimited, err)

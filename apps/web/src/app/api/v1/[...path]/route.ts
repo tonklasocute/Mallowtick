@@ -26,6 +26,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ path: strin
   const headers = new Headers({ Accept: "application/json" });
   const requestId = req.headers.get("x-request-id");
   if (requestId) headers.set("X-Request-ID", requestId);
+  // The API limits each client by address, and sees only this server's. Next
+  // fills X-Forwarded-For from the socket when no proxy in front set it, so in
+  // production a reverse proxy must set it (Caddy does) or a client could pick
+  // its own; the API trusts it only from TRUSTED_PROXIES.
+  const forwardedFor = req.headers.get("x-forwarded-for");
+  if (forwardedFor) headers.set("X-Forwarded-For", forwardedFor);
 
   let upstream: Response;
   try {

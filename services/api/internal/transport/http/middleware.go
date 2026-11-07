@@ -6,12 +6,17 @@ import (
 	"encoding/hex"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"regexp"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/tonklasocute/mallowtick/services/api/internal/clientlimit"
+	"github.com/tonklasocute/mallowtick/services/api/internal/market"
 )
 
 const requestIDHeader = "X-Request-ID"
@@ -83,6 +88,23 @@ func withCORS(origins []string) gin.HandlerFunc {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
+		c.Next()
+	}
+}
+
+// withClientLimits caps each client's requests and hands the market service the
+// client's share of the vendors' budgets, which only provider calls spend.
+// Clients are told apart by the address Gin resolves through the trusted
+// proxies: the web app's proxy route forwards X-Forwarded-For.
+func withClientLimits(l *clientlimit.Limiter) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		key := clientlimit.Key(c.ClientIP())
+		if allowed, wait := l.Allow(key); !allowed {
+			c.Header("Retry-After", strconv.Itoa(max(1, int(math.Ceil(wait.Seconds())))))
+			writeError(c, http.StatusTooManyRequests, "too_many_requests", "Too many requests. Please slow down and try again shortly.")
+			return
+		}
+		c.Request = c.Request.WithContext(market.WithAllowance(c.Request.Context(), l.Allowance(key)))
 		c.Next()
 	}
 }

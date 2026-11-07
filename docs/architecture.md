@@ -78,5 +78,6 @@ Data flow rules:
 - Company logos come only from Finnhub (none with Twelve Data alone, and none for ETFs); initials are shown instead. No news, technical indicators, or portfolio.
 - The watchlist is per device and not synced. It holds at most 25 symbols (the API batch limit).
 - Support/resistance has no multi-timeframe confluence, and its parameters aren't runtime-configurable.
-- Server caches are in-memory and per process. Multiple API replicas would each spend provider credits; use a shared cache before scaling out.
+- Server caches are in-memory and per process. Multiple API replicas would each spend provider credits; use a shared cache before scaling out. The per-client limits are per process too.
+- Per-client limits identify clients by address. Every browser request reaches the API through the web app's `/api/v1` proxy route, which forwards `X-Forwarded-For`; the API trusts that header only from `TRUSTED_PROXIES`. Next fills it in from the socket only when it is missing, so in production the web app must sit behind a reverse proxy that sets it (Caddy does), or a client could choose its own address.
 - Personal market-data plans don't permit public redistribution (see [market-data.md](market-data.md)).
