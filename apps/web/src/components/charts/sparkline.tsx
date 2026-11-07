@@ -11,11 +11,20 @@ interface SparklineProps {
    * e.g. the quote's day change on a one-day line so it never contradicts the change label.
    */
   trend?: Direction;
+  /** Fill the container's width instead of `width`; the height and stroke stay as they are. */
+  stretch?: boolean;
   className?: string;
 }
 
 /** Tiny close-price line drawn from real candles. Renders nothing with fewer than two points. */
-export function Sparkline({ candles, width = 72, height = 28, trend, className }: SparklineProps) {
+export function Sparkline({
+  candles,
+  width = 72,
+  height = 28,
+  trend,
+  stretch = false,
+  className,
+}: SparklineProps) {
   const closes = candles.map((c) => c.close).filter(Number.isFinite);
   if (closes.length < 2) return null;
   const min = Math.min(...closes);
@@ -34,11 +43,13 @@ export function Sparkline({ candles, width = 72, height = 28, trend, className }
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      width={width}
+      width={stretch ? undefined : width}
       height={height}
+      preserveAspectRatio={stretch ? "none" : undefined}
       aria-hidden
       className={cn(
         "shrink-0 overflow-visible",
+        stretch && "w-full",
         dir === "up" ? "stroke-up" : dir === "down" ? "stroke-down" : "stroke-slate",
         className,
       )}
@@ -49,6 +60,7 @@ export function Sparkline({ candles, width = 72, height = 28, trend, className }
         strokeWidth="1.6"
         strokeLinejoin="round"
         strokeLinecap="round"
+        vectorEffect={stretch ? "non-scaling-stroke" : undefined}
       />
     </svg>
   );

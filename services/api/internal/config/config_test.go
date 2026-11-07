@@ -26,6 +26,10 @@ func TestDefaults(t *testing.T) {
 	if cfg.Market.Latency != market.LatencyUnknown {
 		t.Fatalf("latency must default to unknown, got %s", cfg.Market.Latency)
 	}
+	// A chart waiting longer than a few seconds for credits only looks frozen.
+	if cfg.TwelveData.MaxWait != 3*time.Second || cfg.RequestTimeout <= cfg.TwelveData.MaxWait {
+		t.Fatalf("twelve data max wait = %s, request timeout = %s", cfg.TwelveData.MaxWait, cfg.RequestTimeout)
+	}
 	if len(cfg.Market.OverviewSymbols) != 3 || len(cfg.Market.PopularSymbols) != 0 {
 		t.Fatalf("popular symbols must be opt-in: %+v", cfg.Market)
 	}
@@ -86,6 +90,17 @@ func TestOverrides(t *testing.T) {
 	}
 	if cfg.CORSOrigins[0] != "https://mallowtick.example.com" {
 		t.Fatalf("trailing slash should be trimmed: %v", cfg.CORSOrigins)
+	}
+}
+
+func TestRequestTimeoutMustExceedTwelveDataWait(t *testing.T) {
+	cfg, err := Load(env(map[string]string{"TWELVEDATA_MAX_WAIT": "10s"}))
+	if err != nil || cfg.TwelveData.MaxWait != 10*time.Second {
+		t.Fatalf("a longer wait is still allowed: %v %v", cfg.TwelveData.MaxWait, err)
+	}
+	_, err = Load(env(map[string]string{"TWELVEDATA_MAX_WAIT": "15s"}))
+	if err == nil || !strings.Contains(err.Error(), "API_REQUEST_TIMEOUT must exceed TWELVEDATA_MAX_WAIT") {
+		t.Fatalf("expected the timeout check, got %v", err)
 	}
 }
 

@@ -77,8 +77,9 @@ describe("CompanyFundamentals", () => {
     mockFundamentals(() => ok(RKLB));
     renderWithProviders(<CompanyFundamentals symbol="RKLB" />);
 
+    // The vendor's English industry is shown in Thai.
     expect((await screen.findByText("กลุ่มอุตสาหกรรม")).nextSibling).toHaveTextContent(
-      "Aerospace & Defense",
+      "อากาศยานและกลาโหม",
     );
     expect(screen.getByText("เข้าตลาดเมื่อ").nextSibling).toHaveTextContent("16 พ.ย. 2020");
     expect(screen.getByRole("link", { name: "rocketlabcorp.com" })).toHaveAttribute(
@@ -126,6 +127,14 @@ describe("CompanyFundamentals", () => {
     expect(big).toHaveClass("whitespace-nowrap");
     expect(screen.getByText("รายได้ เฉลี่ยต่อปี 5 ปี").nextSibling).toHaveTextContent("+64.04%");
     expect(screen.getByText("รายได้ เฉลี่ยต่อปี 5 ปี").nextSibling).toHaveClass("text-2xl");
+  });
+
+  it("keeps the vendor's English for an industry without a Thai name", async () => {
+    mockFundamentals(() => ok({ ...RKLB, industry: "Space Tourism" }));
+    renderWithProviders(<CompanyFundamentals symbol="RKLB" />);
+    expect((await screen.findByText("กลุ่มอุตสาหกรรม")).nextSibling).toHaveTextContent(
+      "Space Tourism",
+    );
   });
 
   it("says when the vendor has nothing for the symbol", async () => {

@@ -8,7 +8,8 @@
  *                      fetched client-side), so a cached shell never shows
  *                      stale prices as live.
  */
-const VERSION = "v1";
+// Bump when cached files change in place (icons, mascot): they are cache-first.
+const VERSION = "v2";
 const STATIC_CACHE = `mallowtick-static-${VERSION}`;
 const PAGE_CACHE = `mallowtick-pages-${VERSION}`;
 const PRECACHE = ["/offline", "/icons/icon-192.png", "/icons/favicon.svg", "/manifest.webmanifest"];

@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StateMessage } from "@/components/ui/state-message";
 import { cn } from "@/lib/cn";
 import { formatCalendarDate, formatCompact, formatNumber, formatSignedPercent } from "@/lib/format";
+import { industryName } from "@/lib/industry-names";
 import { isApiError } from "@/services/api/client";
 import { useFundamentals } from "@/services/api/queries";
 import type { Fundamentals, KeyMetrics } from "@/types/api";
@@ -47,7 +48,7 @@ function ProfileCard({ f }: { f: Fundamentals }) {
       label: "กลุ่มอุตสาหกรรม",
       value: (
         <span className="rounded-full bg-sky-soft px-2.5 py-1 font-sans text-xs font-medium text-sky-ink">
-          {f.industry}
+          {industryName(f.industry)}
         </span>
       ),
     });

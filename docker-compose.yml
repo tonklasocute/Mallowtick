@@ -1,0 +1,100 @@
+# Mallowtick: the API, the web app, and Caddy in front. See docs/deploy.md.
+#
+#   docker compose up -d --build
+#
+# Only Caddy publishes ports. The web app and the API are reachable only on
+# this project's network. Compose reads HTTP_PORT, HTTPS_PORT and SITE_ADDRESS
+# from the shell or from a .env file next to this file (gitignored).
+#
+# Client addresses (for the API's per-client limits) travel like this:
+#   browser -> caddy: Caddy takes the TCP peer (or, behind the opt-in
+#     Cloudflare tunnel, CF-Connecting-IP from the tunnel container only) and
+#     sets X-Forwarded-For to exactly that address.
+#   caddy -> web: the /api/v1 proxy route forwards X-Forwarded-For as is.
+#   web -> api: the API believes X-Forwarded-For only from TRUSTED_PROXIES,
+#     the web container's fixed address below.
+#
+# The network has a fixed subnet so that address can be named. If it overlaps
+# another network on the machine, change 172.28.86 everywhere: here (subnet,
+# web address, TRUSTED_PROXIES), deploy/compose.tunnel.yml and
+# deploy/Caddyfile.tunnel.
+
+name: mallowtick
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    # Provider keys and limits. Never baked into an image (see .dockerignore).
+    env_file: services/api/.env
+    # These win over the same names in services/api/.env.
+    environment:
+      APP_ENV: production
+      API_ADDR: ":8080"
+      CACHE_FILE: /data/market-cache.json
+      # Only the web app's proxy route may name the client. Not the whole
+      # subnet: Caddy and cloudflared share it, and nothing but the web app
+      # should be believed. Anything else that reaches the API is counted as
+      # its own address (a shared limit, never a chosen one).
+      TRUSTED_PROXIES: 172.28.86.10
+    volumes:
+      - api-cache:/data
+    restart: unless-stopped
+    logging: *logging
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_QUOTE_REFRESH_SECONDS: ${NEXT_PUBLIC_QUOTE_REFRESH_SECONDS:-60}
+    environment:
+      API_ORIGIN: http://api:8080
+    networks:
+      default:
+        ipv4_address: 172.28.86.10
+    depends_on:
+      - api
+    restart: unless-stopped
+    logging: *logging
+
+  caddy:
+    image: caddy:2.11.9-alpine
+    ports:
+      # e.g. HTTP_PORT=8088, or HTTP_PORT=127.0.0.1:8088 to keep it on this machine.
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    environment:
+      # ":80" serves plain HTTP on any host name. A domain that points at this
+      # machine (e.g. mallowtick.duckdns.org) gets automatic HTTPS.
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+    restart: unless-stopped
+    logging: *logging
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.28.86.0/24
+
+volumes:
+  # The API's market cache (CACHE_FILE): candles, market status and USD/THB,
+  # so a restart or an update doesn't spend those provider credits again.
+  api-cache:
+  # Caddy's certificates and ACME account (keep it, or Let's Encrypt is asked again).
+  caddy-data:
+  caddy-config:

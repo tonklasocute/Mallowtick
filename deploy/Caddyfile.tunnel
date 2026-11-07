@@ -1,0 +1,25 @@
+# Mallowtick behind a Cloudflare quick tunnel. Opt-in: deploy/compose.tunnel.yml
+# mounts this file instead of deploy/Caddyfile. See docs/deploy.md.
+#
+# Requests from the internet arrive through the cloudflared container, so the
+# TCP peer is always cloudflared. Cloudflare's edge puts the visitor's address
+# in CF-Connecting-IP. Caddy believes that header only when the request comes
+# from the tunnel container's fixed address (172.28.86.20 in
+# deploy/compose.tunnel.yml); from anyone else it is ignored and the TCP peer
+# counts, as in deploy/Caddyfile.
+{
+	servers {
+		trusted_proxies static 172.28.86.20/32
+		client_ip_headers CF-Connecting-IP
+	}
+}
+
+# Plain HTTP: Cloudflare serves HTTPS on the trycloudflare.com name.
+:80 {
+	reverse_proxy web:3000 {
+		# Exactly one address, the visitor's; never the X-Forwarded-For list
+		# that came through Cloudflare, which a visitor can start with any value.
+		header_up X-Forwarded-For {client_ip}
+	}
+	log
+}

@@ -1,0 +1,20 @@
+# Mallowtick: Caddy in front of the Next.js web app. See docs/deploy.md.
+#
+# Browsers reach Caddy directly (this PC, or a VM). Caddy trusts no proxy in
+# front of it, so the client is the TCP peer, and any X-Forwarded-For the
+# client sends is thrown away. The web app's /api/v1 proxy route forwards the
+# header to the API, which trusts it only from the web container
+# (TRUSTED_PROXIES in docker-compose.yml) and limits each client by it.
+#
+# With a Cloudflare tunnel in front, use Caddyfile.tunnel instead
+# (deploy/compose.tunnel.yml switches to it).
+
+# SITE_ADDRESS (docker-compose.yml) is ":80" for plain HTTP on any host name,
+# or a domain such as mallowtick.duckdns.org for automatic HTTPS.
+{$SITE_ADDRESS::80} {
+	reverse_proxy web:3000 {
+		# Exactly one address: the client as Caddy resolved it.
+		header_up X-Forwarded-For {client_ip}
+	}
+	log
+}

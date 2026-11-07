@@ -64,10 +64,11 @@ Liveness and provider configuration. Always 200 while the server runs.
 { "data": { "status": "ok", "time": "…", "provider": { "name": "finnhub+twelvedata", "configured": true, "latency": "unknown",
   "sources": { "quotes": { "name": "finnhub", "configured": true }, "search": { "name": "finnhub", "configured": true },
     "candles": { "name": "twelvedata", "configured": true }, "status": { "name": "twelvedata", "configured": true },
-    "earnings": { "name": "finnhub", "configured": true }, "fundamentals": { "name": "finnhub", "configured": true } } } } }
+    "earnings": { "name": "finnhub", "configured": true }, "fundamentals": { "name": "finnhub", "configured": true },
+    "fx": { "name": "twelvedata", "configured": true }, "news": { "name": "finnhub", "configured": true } } } } }
 ```
 
-`sources` names the vendor behind each kind of data. With Twelve Data alone every entry is `twelvedata`, and `earnings` and `fundamentals` are absent.
+`sources` names the vendor behind each kind of data. With Twelve Data alone every entry is `twelvedata`, and `earnings`, `fundamentals` and `news` are absent.
 
 ### `GET /market/status`
 
@@ -189,6 +190,17 @@ Analyst rating counts per month, newest first (Finnhub `/stock/recommendation`).
 ```json
 { "data": { "symbol": "RKLB", "trends": [{ "period": "2026-10-01", "strongBuy": 7, "buy": 16, "hold": 5, "sell": 0,
   "strongSell": 0 }], "freshness": { "provider": "finnhub", … } } }
+```
+
+### `GET /stocks/{symbol}/news`
+
+The latest articles about the company from the past week, newest first, at most 10 (Finnhub `/company-news`, one call with `from` and `to` as US market dates, seven days back). They are in English as the vendor published them; HTML entities are decoded and white space collapsed. `summary` is cut to 280 characters at a word, ending in "…", and is `""` when the vendor has none. `source` is the publisher as Finnhub names it (`Yahoo`, `Benzinga`, `SeekingAlpha`). `url` is an https link, in practice Finnhub's redirect `https://finnhub.io/api/news?id=…`; articles without an https link, a headline or a time are left out, and each link is listed once. There are no images: they come from many hosts. `articles` is empty when there is no news. Fails with `provider_not_configured` without a vendor that publishes news (Twelve Data alone); `/health` names it under `sources.news`. Cached for 30 minutes per symbol, so a symbol costs about one Finnhub call per 30 minutes; when the vendor fails, the last articles are served with `freshness.stale`.
+
+```json
+{ "data": { "symbol": "RKLB", "articles": [{ "headline": "Rocket Lab Stock Pulls Out of a Nosedive Friday: What's Going On?",
+  "summary": "Rocket Lab shares are trading higher Friday ahead of Monday's earnings report, rebounding from Thursday's decline.",
+  "source": "Benzinga", "url": "https://finnhub.io/api/news?id=43a8fd13380c8c89b996331f52f12f958879b14b4567523de4def2971d24b1e1",
+  "publishedAt": "2026-11-06T08:50:38Z" }], "freshness": { "provider": "finnhub", … } } }
 ```
 
 ### `GET /stocks/{symbol}/candles?range=1d&warmup=true`
