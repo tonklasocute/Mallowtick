@@ -1,6 +1,7 @@
 "use client";
 
-import { Download, Info, Database, Smartphone } from "lucide-react";
+import { ChevronRight, Database, Download, Info, Smartphone, Wrench } from "lucide-react";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { useSyncExternalStore } from "react";
 
@@ -22,6 +23,14 @@ const LATENCY_COPY: Record<Latency, string> = {
   delayed: "ล่าช้า",
   eod: "ราคาปิดสิ้นวัน",
   unknown: "ไม่ได้ระบุ — ราคาจะแสดงพร้อมเวลาของข้อมูลเท่านั้น",
+};
+
+/** Short labels for a source's row when vendors declare different latencies. */
+const LATENCY_SHORT: Record<Latency, string> = {
+  realtime: "เรียลไทม์",
+  delayed: "ล่าช้า",
+  eod: "สิ้นวัน",
+  unknown: "ไม่ระบุความล่าช้า",
 };
 
 function subscribeDisplayMode(onChange: () => void) {
@@ -60,6 +69,15 @@ function Section({
   );
 }
 
+/** The research and alert screens, which have no tab of their own. */
+const TOOL_LINKS: [string, string, string][] = [
+  ["/briefing", "สรุปตลาดวันนี้", "ข้อสังเกตจากข้อมูลของหุ้นที่คุณติดตาม"],
+  ["/earnings", "ปฏิทินประกาศงบ", "วันประกาศงบและผลเทียบประมาณการ"],
+  ["/news", "ข่าว", "ข่าวของหุ้นในพอร์ตและรายการที่สนใจ"],
+  ["/alerts", "การแจ้งเตือน", "แจ้งเมื่อราคา วันประกาศงบ หรือข่าวเข้าเงื่อนไข"],
+  ["/compare", "เปรียบเทียบหุ้น", "ตัวเลขสำคัญเทียบกันสูงสุด 4 ตัว"],
+];
+
 /** Rows of the data-source list, in display order. */
 const SOURCE_ROWS: [DataKind, string][] = [
   ["quotes", "ราคาล่าสุด"],
@@ -68,6 +86,8 @@ const SOURCE_ROWS: [DataKind, string][] = [
   ["status", "สถานะตลาด"],
   ["earnings", "วันประกาศงบ"],
   ["fundamentals", "ข้อมูลบริษัท"],
+  ["fx", "อัตราแลกเปลี่ยน"],
+  ["news", "ข่าว"],
 ];
 
 /** "ข้อมูลตลาดโดย Finnhub และ Twelve Data" from the vendors actually in use. */
@@ -87,8 +107,11 @@ function ProviderStatus() {
   const { provider } = data;
   const sources = SOURCE_ROWS.flatMap(([kind, label]) => {
     const s = provider.sources?.[kind];
-    return s ? [{ kind, label, ...s }] : [];
+    return s ? [{ kind, label, ...s, latency: s.latency ?? provider.latency }] : [];
   });
+  // One declaration for every vendor reads as before; different ones go on each row.
+  const latencies = new Set(sources.map((s) => s.latency));
+  const mixed = latencies.size > 1;
   return (
     <dl className="space-y-1.5">
       {sources.length > 0 ? (
@@ -97,6 +120,7 @@ function ProviderStatus() {
             <dt>{s.label}</dt>
             <dd className="inline-flex items-center gap-1.5 font-semibold text-ink">
               {vendorLabel(s.name)}
+              {mixed && <Badge tone="sky">{LATENCY_SHORT[s.latency]}</Badge>}
               {!s.configured && <Badge tone="accent">ยังไม่ได้ตั้งค่า</Badge>}
             </dd>
           </div>
@@ -119,7 +143,11 @@ function ProviderStatus() {
       </div>
       <div className="flex justify-between gap-3">
         <dt>ความล่าช้าของข้อมูล</dt>
-        <dd className="text-right font-semibold text-ink">{LATENCY_COPY[provider.latency]}</dd>
+        <dd className="text-right font-semibold text-ink">
+          {mixed
+            ? "แตกต่างกันตามแหล่งข้อมูล (ดูด้านบน)"
+            : LATENCY_COPY[sources[0]?.latency ?? provider.latency]}
+        </dd>
       </div>
     </dl>
   );
@@ -138,6 +166,22 @@ export function MoreScreen() {
             ราคาจะอัปเดตอัตโนมัติขณะเปิดหน้าจออยู่ ทุกราคาแสดงเวลาจากผู้ให้บริการ
             ข้อมูลที่แคชไว้หรือขณะออฟไลน์จะถูกระบุว่าเป็นข้อมูลเก่า และจะไม่แสดงเป็นราคาล่าสุด
           </p>
+        </Section>
+
+        <Section icon={<Wrench aria-hidden className="size-5" />} title="เครื่องมือ">
+          <ul className="-my-1 divide-y divide-line">
+            {TOOL_LINKS.map(([href, label, hint]) => (
+              <li key={href}>
+                <Link href={href} className="flex min-h-12 items-center gap-2 py-1.5">
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium text-ink">{label}</span>
+                    <span className="block text-xs text-slate">{hint}</span>
+                  </span>
+                  <ChevronRight aria-hidden className="size-4 text-slate" />
+                </Link>
+              </li>
+            ))}
+          </ul>
         </Section>
 
         <Section

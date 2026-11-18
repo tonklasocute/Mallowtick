@@ -1,0 +1,14 @@
+{
+  "data": {
+    "pair": "USD/THB",
+    "rate": 33.7691,
+    "asOf": "2026-11-17T21:00:00Z",
+    "freshness": {
+      "provider": "twelvedata",
+      "latency": "delayed",
+      "asOf": "2026-11-17T21:00:00Z",
+      "fetchedAt": "2026-11-17T21:01:00Z",
+      "stale": false
+    }
+  }
+}

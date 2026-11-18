@@ -1,0 +1,65 @@
+{
+  "data": {
+    "provider": {
+      "name": "finnhub+twelvedata",
+      "configured": true,
+      "latency": "delayed",
+      "sources": {
+        "candles": {
+          "name": "twelvedata",
+          "configured": true,
+          "latency": "delayed"
+        },
+        "earnings": {
+          "name": "finnhub",
+          "configured": true,
+          "latency": "delayed"
+        },
+        "fundamentals": {
+          "name": "finnhub",
+          "configured": true,
+          "latency": "delayed"
+        },
+        "fx": {
+          "name": "twelvedata",
+          "configured": true,
+          "latency": "delayed"
+        },
+        "quotes": {
+          "name": "finnhub",
+          "configured": true,
+          "latency": "delayed"
+        },
+        "search": {
+          "name": "finnhub",
+          "configured": true,
+          "latency": "delayed"
+        },
+        "status": {
+          "name": "twelvedata",
+          "configured": true,
+          "latency": "delayed"
+        }
+      },
+      "vendors": {
+        "finnhub": {
+          "state": "closed",
+          "calls": 120,
+          "failures": 0,
+          "consecutiveFailures": 0,
+          "lastFailureAt": null
+        },
+        "twelvedata": {
+          "state": "open",
+          "calls": 40,
+          "failures": 5,
+          "consecutiveFailures": 5,
+          "lastFailureAt": "2026-11-17T21:00:00Z",
+          "lastFailure": "http_502"
+        }
+      }
+    },
+    "status": "ok",
+    "time": "1970-01-01T00:00:00Z"
+  }
+}

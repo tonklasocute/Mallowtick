@@ -29,6 +29,7 @@ import {
   valuePortfolio,
 } from "./portfolio-model";
 import { AllocationDonut, SLICE_FILLS } from "./portfolio-ui";
+import { UpcomingEarnings } from "./upcoming-earnings";
 import { usePortfolio, usePortfolioStorageDescription } from "./use-portfolio";
 
 /*
@@ -367,6 +368,7 @@ export function PortfolioScreen() {
               </p>
             )}
             <Allocation v={v} />
+            <UpcomingEarnings symbols={symbols} />
             <section aria-labelledby="holdings-title" className="flex flex-col gap-2.5">
               <div className="mx-1 flex items-center justify-between">
                 <h2 id="holdings-title" className="text-[17px] font-medium text-ink">

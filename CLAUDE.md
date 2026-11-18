@@ -172,8 +172,9 @@ that sets that header (see docs/architecture.md).
 - The mascot (`components/brand/mascot.tsx`) is drawn as on the canvas: a white body with a
   dark outline, not the cream body of docs/design-reference.png (user's decision,
   2026-10-27). The favicon and app icons in `public/icons` still show the old mascot.
-- The design's bell button and "ดูทั้งหมด" link are omitted: there are no notifications or
-  full popular list yet.
+- The design's bell is in the Discover header (`AlertBell`, unread count). The "ดูทั้งหมด"
+  link is still omitted: there is no full popular list. Four tool tiles under the search lead
+  to the briefing, earnings calendar, news and compare screens (`discover/tools.tsx`).
 - "กลุ่มอุตสาหกรรมเทียบตลาด" (`sector-rotation.tsx`, `/market/sectors`) ranks the 11 S&P 500
   sectors by their SPDR ETFs' returns against SPY. It follows the canvas's Home card: a dark
   "กลุ่มที่นำตลาด" card, then a 4-column mosaic heatmap coloured by the gap to SPY (`heat-0…5`
@@ -219,6 +220,36 @@ that sets that header (see docs/architecture.md).
   but no screen sets them. The goals sheet's target weights were removed too (user's
   decision, 2026-10-27: not useful).
 - With four tabs the bottom nav stacks the icon over the label for the unselected ones.
+
+## Investment intelligence (earnings, news, alerts, research)
+
+Design and provider checks: [docs/plans/investment-intelligence.md](docs/plans/investment-intelligence.md);
+endpoints: [docs/api.md](docs/api.md#investment-intelligence-endpoints-november-2026).
+
+- **Earnings figures carry no "$".** Finnhub's calendar and EPS history are in the company's
+  reporting currency without naming it (PDD and Baidu: yuan). Use `formatAmountCompact` /
+  `formatEps` and the `amount` fact unit, with `REPORTING_CURRENCY_NOTE`. Prices are USD:
+  Finnhub's `profile2.currency` is the reporting currency, never the quote's.
+- The whole-market calendar is capped at 1,500 rows per call; it is fetched per week and split
+  until under the cap (`fetchCalendar`). Don't ask Finnhub for long ranges in one call.
+- "Inline" means equal to the estimate; a sub-cent difference is a beat or a miss.
+- News keeps the vendor's text and link; every `href` from vendor data goes through
+  `safeExternalUrl`. Never write that a story caused a price move.
+- Alerts live in IndexedDB on the device and are checked against data the app fetched
+  (`AlertsProvider` listens to the TanStack Query cache), only while the app is open; no push.
+  Stale quotes never trigger; day-move alerts only while the market is open.
+- Research insights are fixed rules (`internal/research`); each names facts, sources, method,
+  completeness and reliability, and none gives advice. Portfolio concentration is computed in
+  the browser. Per request the briefing fetches at most 2 daily series and 3 EPS histories and
+  news for uncached symbols; the rest is `coverage` (`rate_limited`), filled by later requests.
+- Every endpoint's JSON is pinned in `services/api/internal/transport/http/testdata/contract`
+  and type-checked by `apps/web/tests/api/contract.test.ts`. After an intended, additive
+  change: `go test ./internal/transport/http -run TestContract -update`.
+- Latency is declared per vendor (`FINNHUB_LATENCY`, `TWELVEDATA_LATENCY`, default
+  `MARKET_DATA_LATENCY`). Adapters have a circuit breaker (`internal/resilience`); it is asked
+  before any budget is booked.
+- Server pages (`app/**/page.tsx`) must not import values from `"use client"` modules: they
+  arrive as client references, not values (`MAX_COMPARE` did; it now lives in `lib/research.ts`).
 
 ## Local development
 
@@ -270,6 +301,13 @@ The project is worked on from both a Windows PC and a Mac.
     golangci-lint or staticcheck built with an older Go can't load this module (go 1.27).
 
 ## Known issues
+
+- `pnpm-lock.yaml` has uncommitted dependency updates (from before 2026-11-18) that raise
+  Prettier from 3.9.10 to 3.10.1, which wraps Thai text differently. With 3.10.1 installed,
+  `make lint` flags 12 files that the upgrade didn't touch; with 3.9.10 it flags the files the
+  upgrade added. Keep one version and run `pnpm --filter @mallowtick/web format` once.
+- Portfolio offline (or with no prices at all) shows a total of `$0.00` above holdings marked
+  "ยังไม่มีราคา". Pre-existing; the rows say why, but the total reads like a value.
 
 - Windows only: `make lint` fails at `format:check`: the working copy is CRLF
   (`core.autocrlf=true`) and Prettier expects LF, so ~95 files are flagged even when

@@ -23,6 +23,7 @@ import (
 	"github.com/tonklasocute/mallowtick/services/api/internal/cache"
 	"github.com/tonklasocute/mallowtick/services/api/internal/market"
 	"github.com/tonklasocute/mallowtick/services/api/internal/ratebudget"
+	"github.com/tonklasocute/mallowtick/services/api/internal/resilience"
 )
 
 // ProviderName identifies this adapter in responses and logs.
@@ -37,6 +38,10 @@ const (
 	// caller's cancellation: room in the budget, the request, and for an ETF's
 	// profile the name search after it.
 	sharedTimeout = 30 * time.Second
+	// After breakerThreshold failed calls in a row the adapter stops calling
+	// Finnhub for breakerCooldown, and the service serves its stale cache.
+	breakerThreshold = 5
+	breakerCooldown  = 30 * time.Second
 )
 
 // Config configures the client.
@@ -59,6 +64,7 @@ type Client struct {
 	baseURL *url.URL
 	http    *http.Client
 	budget  *ratebudget.Budget
+	breaker *resilience.Breaker
 	maxWait time.Duration
 	log     *slog.Logger
 	now     func() time.Time
@@ -85,6 +91,10 @@ var (
 	_ market.RangeProvider        = (*Client)(nil)
 	_ market.FundamentalsProvider = (*Client)(nil)
 	_ market.PerformanceProvider  = (*Client)(nil)
+
+	_ market.EarningsCalendarProvider = (*Client)(nil)
+	_ market.NameSource               = (*Client)(nil)
+	_ market.NewsProvider             = (*Client)(nil)
 )
 
 // New validates cfg and returns a client.
@@ -113,6 +123,7 @@ func New(cfg Config) (*Client, error) {
 		baseURL: base,
 		http:    cfg.HTTPClient,
 		budget:  ratebudget.New(cfg.CallsPerMinute, time.Minute),
+		breaker: resilience.New(breakerThreshold, breakerCooldown, cfg.Now),
 		maxWait: cfg.MaxWait,
 		log:     cfg.Logger,
 		now:     cfg.Now,
@@ -127,6 +138,9 @@ func New(cfg Config) (*Client, error) {
 func (c *Client) Name() string     { return ProviderName }
 func (c *Client) Configured() bool { return true }
 
+// VendorStats implements market.VendorMonitor.
+func (c *Client) VendorStats() resilience.Stats { return c.breaker.Stats() }
+
 // get spends one call from the budget, performs a GET, and decodes the JSON
 // body into out.
 func (c *Client) get(ctx context.Context, path string, params url.Values, out any) error {
@@ -138,11 +152,21 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 
 // spend books one call from the client's share and then from the budget,
 // waiting up to maxWait for room.
+//
+// The breaker is asked first, so a call it would refuse books nothing; when the
+// budget then has no room the breaker's slot is given back. Every successful
+// spend is followed by exactly one send, which records the outcome.
 func (c *Client) spend(ctx context.Context) error {
+	if err := c.breaker.Allow(); err != nil {
+		// Finnhub keeps failing: don't book a call it won't get.
+		return fmt.Errorf("%w: finnhub: %w", market.ErrUnavailable, err)
+	}
 	if err := market.TakeAllowance(ctx, ProviderName, 1); err != nil {
+		c.breaker.Abandon()
 		return err
 	}
 	if err := c.budget.Spend(ctx, 1, c.maxWait); err != nil {
+		c.breaker.Abandon()
 		if errors.Is(err, ratebudget.ErrNoRoom) {
 			return fmt.Errorf("%w: %w", market.ErrRateLimited, err)
 		}
@@ -152,7 +176,10 @@ func (c *Client) spend(ctx context.Context) error {
 }
 
 // send is get for a call already booked with spend.
-func (c *Client) send(ctx context.Context, path string, params url.Values, out any) error {
+func (c *Client) send(ctx context.Context, path string, params url.Values, out any) (err error) {
+	reason := "unreachable"
+	defer func() { recordOutcome(ctx, c.breaker, err, reason) }()
+
 	u := c.baseURL.JoinPath(path)
 	u.RawQuery = params.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
@@ -177,6 +204,7 @@ func (c *Client) send(ctx context.Context, path string, params url.Values, out a
 	if err != nil {
 		return fmt.Errorf("%w: read %s response: %w", market.ErrUnavailable, path, err)
 	}
+	reason = fmt.Sprintf("http_%d", resp.StatusCode)
 	if resp.StatusCode >= 300 {
 		var e struct {
 			Error string `json:"error"`
@@ -189,9 +217,26 @@ func (c *Client) send(ctx context.Context, path string, params url.Values, out a
 		return err
 	}
 	if err := json.Unmarshal(body, out); err != nil {
+		reason = "bad_response"
 		return fmt.Errorf("%w: decode %s: %w", market.ErrUnavailable, path, err)
 	}
 	return nil
+}
+
+// recordOutcome tells the breaker how a sent call ended: an answer of any
+// kind (including "not found" or a rate limit) means Finnhub is up; only
+// ErrUnavailable counts against it, and a call the caller cancelled says nothing.
+func recordOutcome(ctx context.Context, b *resilience.Breaker, err error, reason string) {
+	switch {
+	case err == nil:
+		b.Success()
+	case ctx.Err() != nil:
+		b.Abandon()
+	case errors.Is(err, market.ErrUnavailable):
+		b.Failure(reason)
+	default:
+		b.Success()
+	}
 }
 
 func mapError(code int, message string) error {

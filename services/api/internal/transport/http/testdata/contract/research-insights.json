@@ -1,0 +1,42 @@
+{
+  "data": {
+    "today": "2026-11-17",
+    "generatedAt": "2026-11-17T21:00:00Z",
+    "insights": [
+      {
+        "id": "below_ema50:AAPL:2026-11-17",
+        "type": "below_ema50",
+        "scope": "symbol",
+        "symbol": "AAPL",
+        "title": "AAPL ต่ำกว่าเส้น EMA 50 วัน",
+        "explanation": "…",
+        "method": "EMA 50 วันจากราคาปิดรายวัน",
+        "facts": [
+          {
+            "label": "ราคาล่าสุด",
+            "value": 347.73,
+            "unit": "usd"
+          },
+          {
+            "label": "เซสชัน",
+            "value": null,
+            "text": "2026-11-16",
+            "unit": "date"
+          }
+        ],
+        "sources": [
+          "twelvedata",
+          "finnhub",
+          "mallowtick"
+        ],
+        "asOf": "2026-11-17T21:00:00Z",
+        "completeness": "complete",
+        "reliability": "medium",
+        "tone": "down",
+        "priority": 45
+      }
+    ],
+    "coverage": [],
+    "disclaimer": "ข้อสังเกตสร้างโดยกฎของ Mallowtick จากข้อมูลของผู้ให้บริการ เพื่อประกอบการศึกษาเท่านั้น ไม่ใช่คำแนะนำให้ซื้อหรือขาย และไม่ได้บอกสาเหตุของการเปลี่ยนแปลงราคา"
+  }
+}

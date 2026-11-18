@@ -1,3 +1,5 @@
+import { backUpCorrupt, readVersioned, writeVersioned } from "@/lib/versioned-storage";
+
 import { EMPTY_PORTFOLIO, type Portfolio, sanitizePortfolio } from "./portfolio-model";
 
 /**
@@ -14,6 +16,7 @@ export interface PortfolioRepository {
 }
 
 export const PORTFOLIO_STORAGE_KEY = "mallowtick.portfolio.v1";
+const VERSION = 1;
 
 /** Persists the portfolio in this browser's localStorage. Not synced across devices. */
 export class LocalStoragePortfolioRepository implements PortfolioRepository {
@@ -23,16 +26,23 @@ export class LocalStoragePortfolioRepository implements PortfolioRepository {
 
   async load(): Promise<Portfolio> {
     try {
-      const raw = this.storage.getItem(PORTFOLIO_STORAGE_KEY);
-      return raw ? sanitizePortfolio(JSON.parse(raw)) : EMPTY_PORTFOLIO;
+      const stored = readVersioned(this.storage, PORTFOLIO_STORAGE_KEY, VERSION);
+      if (stored.status === "empty") return EMPTY_PORTFOLIO;
+      if (stored.status === "corrupt") {
+        backUpCorrupt(this.storage, PORTFOLIO_STORAGE_KEY, stored.raw);
+        return EMPTY_PORTFOLIO;
+      }
+      // A newer build's portfolio is shown as far as this build understands it; save refuses it.
+      return sanitizePortfolio(stored.value);
     } catch {
-      return EMPTY_PORTFOLIO; // corrupted or inaccessible storage: start empty rather than crash
+      return EMPTY_PORTFOLIO; // inaccessible storage: start empty rather than crash
     }
   }
 
+  /** Throws NewerDataError rather than overwrite a portfolio saved by a newer version. */
   async save(portfolio: Portfolio): Promise<void> {
-    const value = { version: 1, ...sanitizePortfolio(portfolio) };
-    this.storage.setItem(PORTFOLIO_STORAGE_KEY, JSON.stringify(value));
+    const value = { version: VERSION, ...sanitizePortfolio(portfolio) };
+    writeVersioned(this.storage, PORTFOLIO_STORAGE_KEY, VERSION, value);
   }
 
   subscribe(onChange: () => void): () => void {

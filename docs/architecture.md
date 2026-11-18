@@ -23,6 +23,9 @@ apps/web  (Next.js App Router)
 | `internal/config` | Reads env vars and validates them all at startup; reports every invalid value together. |
 | `internal/market` | Vendor-independent domain types, input validation (`Symbol`, `Range`), the `Provider` interface, error sentinels and codes, and `Service` (caching, request de-duplication, freshness, stale fallback, overview, levels). |
 | `internal/market/twelvedata` | Provider adapter: auth header, local credit limiter, response parsing, error mapping. |
+| `internal/market/finnhub` | Second vendor: quotes, search, earnings calendar, fundamentals, news. |
+| `internal/research` | Rule-based insights (briefing, insights, compare) from the market service's data; pure rules plus a budget-aware gatherer. |
+| `internal/resilience` | Per-vendor circuit breaker and call counters (`/health` → `provider.vendors`). |
 | `internal/supportresistance` | Pure, deterministic level calculation. |
 | `internal/cache` | Small generic TTL cache that keeps expired entries for fallback. |
 | `internal/transport/http` | Gin router, middleware (request ID, logging, recovery, CORS, timeout, no-store), handlers, envelope, error mapping. |
@@ -38,8 +41,8 @@ Design choices:
 
 | Path | Responsibility |
 |---|---|
-| `src/app` | Routes (`/`, `/stocks/[symbol]`, `/watchlist`, `/more`, `/offline`), root layout, providers, `manifest.ts`, API proxy route. |
-| `src/features/*` | Screen-level components: discover, stock-detail, watchlist (plus storage), more. |
+| `src/app` | Routes (`/`, `/stocks/[symbol]`, `/watchlist`, `/portfolio`, `/earnings`, `/news`, `/alerts`, `/briefing`, `/compare`, `/more`, `/offline`), root layout, providers, `manifest.ts`, API proxy route. |
+| `src/features/*` | Screen-level components: discover, stock-detail, watchlist and portfolio (plus storage), earnings, news, alerts (IndexedDB store and rule engine), research (briefing, compare), more. |
 | `src/components/*` | Reusable UI: `ui` primitives, `layout`, `brand`, `market`, `stocks`, `charts`. |
 | `src/services/api` | `client.ts` (envelope → `ApiError`), `endpoints.ts`, `queries.ts` (query keys, polling, quote sharing). |
 | `src/lib` | Formatting, freshness labelling, exchange-time conversion, level labelling, config. |
@@ -54,6 +57,12 @@ Data flow rules:
 - Quote state is cached per symbol under one TanStack Query key. Batch responses (overview, watchlist) seed those per-symbol entries, so Stock Detail reuses them instead of keeping a second copy.
 - Requests are cancelled via `AbortSignal` when queries are abandoned. Identical in-flight queries are de-duplicated by TanStack Query.
 - Every state is explicit: loading skeletons, empty states, `ApiErrorState` (with specific copy for not-configured, rate-limited, offline, …), stale and closed badges.
+
+### Device storage
+
+- `localStorage`: the watchlist (`mallowtick.watchlist.v1`), portfolio (`mallowtick.portfolio.v1`) and chart preferences. Reads and writes go through `lib/versioned-storage.ts`: a value written by a newer app version is shown but never overwritten (`NewerDataError`), and an unreadable one is copied to `<key>.backup` before anything replaces it. The v1 format is unchanged.
+- IndexedDB (`mallowtick`, version 1): alert rules, their state and the alerts raised (`features/alerts/alert-store.ts`). Upgrades only add stores; a database from a newer version is left alone and alerts fall back to memory for that visit. Where IndexedDB is unavailable, alerts work in memory and the screen says so.
+- Nothing about the portfolio or alerts is sent to the API; screens send tickers as query filters only.
 
 ### Watchlist storage
 
@@ -75,7 +84,9 @@ Data flow rules:
 - No streaming: quotes are polled (see [market-data.md](market-data.md#polling-strategy-no-streaming-in-v1)).
 - The free Twelve Data plan's daily credits run out quickly with continuous polling. Tune `QUOTE_CACHE_TTL` or upgrade.
 - Benchmarks are ETFs (SPY/QQQ/DIA), not index levels.
-- Company logos come only from Finnhub (none with Twelve Data alone, and none for ETFs); initials are shown instead. No news, technical indicators, or portfolio.
+- Company logos come only from Finnhub (none with Twelve Data alone, and none for ETFs); initials are shown instead.
+- Alerts are checked only while the app is open; there is no web push (it would need the server to keep subscriptions and private rules, and spend provider calls in the background). News stays in its original language.
+- Earnings revenue against its estimate exists for the latest quarter only (Finnhub's free calendar lists one past report per symbol). Earnings figures are in the company's reporting currency, which the vendor doesn't name.
 - The watchlist is per device and not synced. It holds at most 25 symbols (the API batch limit).
 - Support/resistance has no multi-timeframe confluence, and its parameters aren't runtime-configurable.
 - Server caches are in-memory and per process. Multiple API replicas would each spend provider credits; use a shared cache before scaling out. The per-client limits are per process too.

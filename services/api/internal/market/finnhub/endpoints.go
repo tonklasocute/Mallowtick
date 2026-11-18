@@ -196,13 +196,13 @@ func (c *Client) instrument(ctx context.Context, sym market.Symbol) (instrumentI
 	if err := c.get(ctx, "/stock/profile2", url.Values{"symbol": {string(sym)}}, &p); err != nil {
 		return instrumentInfo{}, err
 	}
+	// The profile's currency is the one the company reports in (CNY for PDD,
+	// checked 2026-11-18), not the one its US listing trades in: Finnhub's
+	// /quote prices US listings in dollars. Only US listings are supported.
 	info := instrumentInfo{
-		Name: p.Name, Exchange: shortExchange(p.Exchange), Currency: p.Currency,
+		Name: p.Name, Exchange: shortExchange(p.Exchange), Currency: "USD",
 		Industry: p.Industry, Country: p.Country, IPODate: p.IPO, Website: p.Website,
 		Logo: cleanLogo(p.Logo), Shares: scaled(p.Shares, millions),
-	}
-	if info.Currency == "" {
-		info.Currency = "USD" // only US-listed instruments are supported
 	}
 	if info.Name == "" {
 		matches, err := c.search(ctx, string(sym))
@@ -589,8 +589,8 @@ func (c *Client) MarketStatus(ctx context.Context) (market.MarketStatus, error) 
 	return market.MarketStatus{Exchange: s.Exchange, Name: "US market", IsOpen: s.IsOpen}, nil
 }
 
-// NextEarnings implements market.EarningsProvider. The free plan's calendar
-// covers upcoming reports only, not past ones.
+// NextEarnings implements market.EarningsProvider. The service uses
+// SymbolEarnings instead when it can (one call for the latest and next report).
 func (c *Client) NextEarnings(ctx context.Context, sym market.Symbol, from time.Time) (*market.EarningsEvent, error) {
 	ny, err := time.LoadLocation("America/New_York")
 	if err != nil {
@@ -623,4 +623,152 @@ func (c *Client) NextEarnings(ctx context.Context, sym market.Symbol, from time.
 		}
 	}
 	return next, nil
+}
+
+// calendarRowCap is the most rows /calendar/earnings ever returns (checked
+// 2026-11-18: two weeks in season came back as exactly 1,500 rows, the
+// earliest days missing). A response this long may be cut off.
+const calendarRowCap = 1500
+
+// calendarRow is one /calendar/earnings entry.
+type calendarRow struct {
+	Symbol          string   `json:"symbol"`
+	Date            string   `json:"date"`
+	Hour            string   `json:"hour"`
+	Quarter         int      `json:"quarter"`
+	Year            int      `json:"year"`
+	EPSEstimate     *float64 `json:"epsEstimate"`
+	EPSActual       *float64 `json:"epsActual"`
+	RevenueEstimate *float64 `json:"revenueEstimate"`
+	RevenueActual   *float64 `json:"revenueActual"`
+}
+
+// event converts a row, rejecting symbols and dates the API can't use.
+func (r calendarRow) event() (market.EarningsEvent, bool) {
+	sym, err := market.ParseSymbol(r.Symbol)
+	if err != nil {
+		return market.EarningsEvent{}, false
+	}
+	if _, err := time.Parse(time.DateOnly, r.Date); err != nil {
+		return market.EarningsEvent{}, false
+	}
+	hour := strings.ToLower(r.Hour)
+	if hour != "bmo" && hour != "amc" && hour != "dmh" {
+		hour = ""
+	}
+	return market.EarningsEvent{
+		Symbol: string(sym), Date: r.Date, Hour: hour, Quarter: r.Quarter, Year: r.Year,
+		EPSEstimate: r.EPSEstimate, EPSActual: r.EPSActual, RevenueEstimate: r.RevenueEstimate, RevenueActual: r.RevenueActual,
+	}, true
+}
+
+func (c *Client) calendar(ctx context.Context, params url.Values) ([]market.EarningsEvent, int, error) {
+	var resp struct {
+		Calendar []calendarRow `json:"earningsCalendar"`
+	}
+	if err := c.get(ctx, "/calendar/earnings", params, &resp); err != nil {
+		return nil, 0, err
+	}
+	events := make([]market.EarningsEvent, 0, len(resp.Calendar))
+	for _, r := range resp.Calendar {
+		if ev, ok := r.event(); ok {
+			events = append(events, ev)
+		}
+	}
+	return events, len(resp.Calendar), nil
+}
+
+// EarningsCalendar implements market.EarningsCalendarProvider with one call.
+func (c *Client) EarningsCalendar(ctx context.Context, from, to string) (market.CalendarPage, error) {
+	events, rows, err := c.calendar(ctx, url.Values{"from": {from}, "to": {to}})
+	if err != nil {
+		return market.CalendarPage{}, err
+	}
+	return market.CalendarPage{Events: events, Truncated: rows >= calendarRowCap}, nil
+}
+
+// SymbolEarnings implements market.EarningsCalendarProvider with one call. The
+// free plan lists at most the latest past report and the next one (checked
+// 2026-11-18: AAPL from 2024 gave one row).
+func (c *Client) SymbolEarnings(ctx context.Context, sym market.Symbol, from, to string) ([]market.EarningsEvent, error) {
+	events, _, err := c.calendar(ctx, url.Values{"symbol": {string(sym)}, "from": {from}, "to": {to}})
+	if err != nil {
+		return nil, err
+	}
+	// Only the asked symbol: the vendor matches loosely elsewhere (search).
+	return slices.DeleteFunc(events, func(e market.EarningsEvent) bool { return e.Symbol != string(sym) }), nil
+}
+
+// CachedName implements market.NameSource from the profile cache.
+func (c *Client) CachedName(sym market.Symbol) (string, bool) {
+	if e, state := c.info.Get(string(sym)); state == cache.Fresh && e.Value.Name != "" {
+		return e.Value.Name, true
+	}
+	return "", false
+}
+
+// newsItem is one /news or /company-news entry.
+type newsItem struct {
+	Category string `json:"category"`
+	Datetime int64  `json:"datetime"`
+	Headline string `json:"headline"`
+	ID       int64  `json:"id"`
+	Related  string `json:"related"`
+	Source   string `json:"source"`
+	Summary  string `json:"summary"`
+	URL      string `json:"url"`
+}
+
+// article converts an item, dropping ones without a headline, a time, an id
+// or an http(s) link: the app must be able to credit and link every story.
+func (n newsItem) article() (market.NewsArticle, bool) {
+	headline := strings.TrimSpace(n.Headline)
+	u, err := url.Parse(strings.TrimSpace(n.URL))
+	if headline == "" || n.Datetime <= 0 || n.ID <= 0 || err != nil ||
+		(u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return market.NewsArticle{}, false
+	}
+	related := []string{}
+	for _, r := range strings.Split(n.Related, ",") {
+		if sym, err := market.ParseSymbol(r); err == nil && !slices.Contains(related, string(sym)) {
+			related = append(related, string(sym))
+		}
+	}
+	return market.NewsArticle{
+		ID: fmt.Sprintf("fh-%d", n.ID), Headline: headline, Summary: strings.TrimSpace(n.Summary),
+		URL: u.String(), Source: strings.TrimSpace(n.Source), // "" when not given: never guessed
+		PublishedAt: time.Unix(n.Datetime, 0).UTC(), Category: strings.ToLower(strings.TrimSpace(n.Category)),
+		Related: related, Provider: ProviderName,
+	}, true
+}
+
+func (c *Client) news(ctx context.Context, path string, params url.Values) ([]market.NewsArticle, error) {
+	var items []newsItem
+	if err := c.get(ctx, path, params, &items); err != nil {
+		return nil, err
+	}
+	out := make([]market.NewsArticle, 0, len(items))
+	for _, n := range items {
+		if a, ok := n.article(); ok {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+// MarketNews implements market.NewsProvider with one /news call.
+func (c *Client) MarketNews(ctx context.Context, category string) ([]market.NewsArticle, error) {
+	return c.news(ctx, "/news", url.Values{"category": {category}})
+}
+
+// CompanyNews implements market.NewsProvider with one /company-news call.
+// Finnhub's related field is the asked symbol; it is always included.
+func (c *Client) CompanyNews(ctx context.Context, sym market.Symbol, from, to string) ([]market.NewsArticle, error) {
+	articles, err := c.news(ctx, "/company-news", url.Values{"symbol": {string(sym)}, "from": {from}, "to": {to}})
+	for i := range articles {
+		if !slices.Contains(articles[i].Related, string(sym)) {
+			articles[i].Related = append(articles[i].Related, string(sym))
+		}
+	}
+	return articles, err
 }

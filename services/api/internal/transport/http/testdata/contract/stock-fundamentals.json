@@ -1,0 +1,45 @@
+{
+  "data": {
+    "symbol": "AAPL",
+    "industry": "Technology",
+    "country": "US",
+    "ipoDate": "1980-12-12",
+    "website": "https://www.apple.com/",
+    "sharesOutstanding": 14800000000,
+    "metrics": {
+      "marketCap": 3200000000000,
+      "enterpriseValue": 3300000000000,
+      "peTTM": 35.1,
+      "psTTM": 8.4,
+      "pb": 52.3,
+      "epsTTM": 7.4,
+      "revenueGrowthYoY": 6.1,
+      "revenueGrowth5Y": 8.2,
+      "epsGrowthYoY": 10.2,
+      "grossMarginTTM": 46.5,
+      "operatingMarginTTM": 31.2,
+      "netMarginTTM": 24.3,
+      "roeTTM": 151.3,
+      "currentRatio": 0.87,
+      "debtToEquity": 1.5,
+      "dividendYield": 0.45,
+      "payoutRatioTTM": 15.1,
+      "beta": 1.2,
+      "priceReturnYTD": 18.2,
+      "priceReturn1Y": 22.4,
+      "sp500ReturnYTD": 11.4,
+      "sp500Return1Y": 13.1,
+      "fiftyTwoWeekHigh": 351.73,
+      "fiftyTwoWeekLow": 243.42,
+      "fiftyTwoWeekHighDate": "2026-11-12",
+      "fiftyTwoWeekLowDate": "2026-04-08"
+    },
+    "freshness": {
+      "provider": "finnhub",
+      "latency": "delayed",
+      "asOf": "2026-11-17T21:00:00Z",
+      "fetchedAt": "2026-11-17T21:01:00Z",
+      "stale": false
+    }
+  }
+}

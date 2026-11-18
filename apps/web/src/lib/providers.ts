@@ -1,6 +1,7 @@
 const LABELS: Record<string, string> = {
   twelvedata: "Twelve Data",
   finnhub: "Finnhub",
+  mallowtick: "Mallowtick (คำนวณ)",
 };
 
 /**

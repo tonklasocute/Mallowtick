@@ -215,3 +215,43 @@ Default range `3m`. Support/resistance levels calculated from that range's candl
   "method": { "name": "swing-cluster-v1", "description": "…", "parameters": { "swingWindow": 3, "atrPeriod": 14, "clusterAtrMultiple": 0.5, … } },
   "disclaimer": "Levels are calculated by Mallowtick from historical candles…", "freshness": { … } } }
 ```
+
+## Investment intelligence endpoints (November 2026)
+
+All are additive; no earlier response lost or renamed a field. `/health` gained `provider.sources.*.latency`, `provider.sources.news` and `provider.vendors`; `next` in `/stocks/{symbol}/earnings` gained `epsActual`, `revenueActual` (and `name`/`logo` when already known). The JSON of every endpoint is pinned in `services/api/internal/transport/http/testdata/contract/`, and the web app type-checks those files (`apps/web/tests/api/contract.test.ts`).
+
+Earnings figures (EPS, revenue) are in the company's **reporting currency**, which the vendor doesn't name: for foreign ADRs it is not USD (PDD's and Baidu's revenue estimates are in yuan). Prices are always USD.
+
+### `GET /earnings/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD&symbols=A,B`
+
+The market's earnings reports between `from` and `to` (New York dates, inclusive; default today and the next 13 days; at most 35 days, within 180 days of today). `symbols` (optional, up to 50) filters the list. Past reports carry `epsActual` and `revenueActual`. Events are sorted by date, then before the open, during the session, after the close, unknown. `name` and `logo` appear only when the API already knows them; there is no lookup per row. `truncated` is true when the vendor's 1,500-row limit may have left reports out (the API splits ranges until that no longer happens, so it is rare). `today` is the New York date the API used.
+
+Finnhub `/calendar/earnings` is fetched per Monday–Sunday week and shared by every request: past weeks are kept 24h, the current week 30 minutes, later weeks 6h.
+
+### `GET /earnings/{symbol}`
+
+`{ symbol, today, next, last, freshness }`: the next report without actuals (today or later) and the latest report with actuals (or already past). One Finnhub call per symbol, cached 12h (1h when a report is within a day). `/stocks/{symbol}/earnings` now answers from the same cached call.
+
+### `GET /earnings/{symbol}/history`
+
+`/stocks/{symbol}/earnings/history` plus, per quarter: `epsResult` (`beat` | `miss` | `inline` | `""`), and, for the quarter the calendar still lists (the latest: Finnhub's free plan lists only that one), `reportDate`, `hour`, `revenueActual`, `revenueEstimate`, `revenueSurprisePercent`, `revenueResult`. Quarters are matched by fiscal year and quarter, never by date. `inline` means equal; a sub-cent difference is a beat or a miss, as the app always showed. A zero estimate is an estimate; `surprisePercent` is `null` for it. `epsRecord` counts the results.
+
+### `GET /news?symbols=A,B&category=general|merger&from&to&page&limit`
+
+Grouped news, newest first. With `symbols` (up to 10) it is company news of the last 7 days; without, market news (`general` by default, or `merger`). `page` (1–100) and `limit` (1–50, default 20) page the grouped list; `total` and `hasMore` describe it. `from`/`to` filter by New York date (at most 30 days back).
+
+Each article keeps the vendor's headline, summary, publisher (`source`, `""` when not given) and link (`url`; Finnhub's links redirect to the publisher). Duplicates (same vendor id, same normalised URL, same summary, or same headline of five or more words within 48h) are grouped: `sources` lists every publication, the earliest first, and `related` merges the tickers. Company news is cached 30 minutes per symbol and market news 10 minutes. A request fetches at most 5 uncached symbols; the others are listed in `unavailable` as `rate_limited` and come with a later request.
+
+### `GET /news/{id}`
+
+An article listed in the last 24h, by id (`fh-143886409`). Articles are not stored: an unknown or older id is `not_found`.
+
+### `GET /research/briefing?symbols=A,B` · `GET /research/insights?symbols=A,B` · `GET /research/compare?symbols=A,B`
+
+Rule-based insights from vendor data (no AI model). `briefing` (0–25 symbols) returns `market` (benchmark ETFs and sector breadth), `insights` for the symbols, `thingsToWatch` (the top 6) and `coverage`; `insights` (1–25) returns the symbol part only; `compare` (2–4) returns each symbol's price, fundamentals, EPS record, latest quarter and latest analyst counts, with what was missing in `missing`.
+
+Each insight has `type`, `scope`, `symbol`, a Thai `title` and `explanation`, the `method` (rule), `facts` (`{label, value, text, unit}`; `unit` is `usd`, `amount` (reporting currency), `percent`, `shares`, `ratio`, `date`, `text` or `count`), `sources` (vendor ids, plus `mallowtick` for computed values), `asOf`, `completeness` (`complete` | `partial`), `reliability` (`high`: vendor-reported; `medium`: computed from vendor data), `tone` (`up` | `down` | `neutral`, a direction, never advice) and `priority`.
+
+Rules: a day move of 3% or more; price below the 50-day EMA of completed sessions (needs 100); last completed session's volume at least 1.5× its 20-session average (today's session never counts); within 2% of the 252-session high or low; a report within 7 days; a reported quarter within 30 days; news in the last 24 hours. None claims a cause or recommends anything; each response carries `disclaimer`.
+
+`coverage` lists per symbol (`""` for the market) the data that was missing and why. Per request at most 2 symbols' daily bars and 3 symbols' earnings histories are fetched (within 6 s; a slower fetch finishes in the background and is cached); the rest are `rate_limited` and arrive with later requests. Holdings are never sent: the portfolio's concentration is computed in the browser.

@@ -1,0 +1,40 @@
+{
+  "data": {
+    "benchmark": {
+      "symbol": "SPY",
+      "returns": {
+        "1d": 0.71,
+        "1w": -0.85,
+        "3m": 2.85,
+        "ytd": 11.45,
+        "1y": 13.13
+      }
+    },
+    "sectors": [
+      {
+        "sector": "technology",
+        "symbol": "XLK",
+        "returns": {
+          "1d": 0.71,
+          "1w": -0.85,
+          "3m": 2.85,
+          "ytd": 11.45,
+          "1y": 13.13
+        }
+      }
+    ],
+    "unavailable": [
+      {
+        "symbol": "XLE",
+        "reason": "rate_limited"
+      }
+    ],
+    "freshness": {
+      "provider": "finnhub",
+      "latency": "delayed",
+      "asOf": "2026-11-17T21:00:00Z",
+      "fetchedAt": "2026-11-17T21:01:00Z",
+      "stale": false
+    }
+  }
+}

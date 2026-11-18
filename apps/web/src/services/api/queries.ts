@@ -1,9 +1,15 @@
 "use client";
 
-import { keepPreviousData, QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  QueryClient,
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import { QUOTE_REFRESH_MS } from "@/lib/config";
-import type { ChartRange, Quote } from "@/types/api";
+import type { ChartRange, MarketNewsCategory, NewsPage, Quote } from "@/types/api";
 
 import { isApiError } from "./client";
 import { endpoints } from "./endpoints";
@@ -36,12 +42,23 @@ const NO_RETRY = new Set([
   "provider_not_entitled",
 ]);
 
+/**
+ * Exponential backoff with "full jitter": 1st retry within 0.5–1 s, 2nd within 1–2 s, capped at
+ * 30 s. Spreading retries keeps many clients that failed together (e.g. after an API restart) from
+ * retrying together.
+ */
+export function retryDelay(attempt: number, random: () => number = Math.random): number {
+  const ceiling = Math.min(30_000, 1_000 * 2 ** attempt);
+  return Math.round(ceiling / 2 + random() * (ceiling / 2));
+}
+
 export function createQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
       queries: {
         staleTime: 30_000,
         retry: (count, err) => !(isApiError(err) && NO_RETRY.has(err.code)) && count < 2,
+        retryDelay: (attempt) => retryDelay(attempt),
         refetchOnWindowFocus: true,
       },
     },
@@ -205,6 +222,54 @@ export function useEarningsHistory(symbol: string) {
   });
 }
 
+/**
+ * The EPS history with beat/miss, report dates and, for the latest quarter, revenue against
+ * its estimate. Costs the same cached calls as the EPS history and the earnings badge.
+ */
+export function useEarningsDetail(symbol: string) {
+  return useQuery({
+    queryKey: ["earnings-detail", symbol] as const,
+    queryFn: ({ signal }) => endpoints.earningsDetail(symbol, signal),
+    staleTime: 60 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** One symbol's latest and next report (one cached vendor call, shared with the badge). */
+export function useSymbolEarnings(symbol: string, enabled = true) {
+  return useQuery({
+    queryKey: ["symbol-earnings", symbol] as const,
+    queryFn: ({ signal }) => endpoints.symbolEarnings(symbol, signal),
+    enabled,
+    staleTime: 60 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/**
+ * The market's earnings calendar from `from` to `to` (YYYY-MM-DD, New York), optionally only
+ * for `symbols`. The server fetches it per week and shares it between everyone, so ranges and
+ * filters cost nothing extra once a week is cached.
+ */
+export function useEarningsCalendar(
+  from: string,
+  to: string,
+  symbols: string[] = [],
+  enabled = true,
+) {
+  const sorted = [...symbols].sort();
+  return useQuery({
+    queryKey: ["earnings-calendar", from, to, sorted.join(",")] as const,
+    queryFn: ({ signal }) => endpoints.earningsCalendar(from, to, sorted, signal),
+    enabled,
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
+  });
+}
+
 /** Monthly analyst rating counts; the server caches them for 12h. */
 export function useRecommendations(symbol: string) {
   return useQuery({
@@ -267,5 +332,79 @@ export function useDailySparkline(symbol: string, enabled = true) {
     staleTime: DAILY_SPARKLINE_MS,
     gcTime: DAILY_SPARKLINE_MS,
     ...SPARKLINE_OPTIONS,
+  });
+}
+
+/** The most symbols one news request may ask for (the API's limit). */
+export const NEWS_MAX_SYMBOLS = 10;
+
+/** How soon to ask again for symbols whose news the API left for later. */
+const NEWS_QUOTA_RETRY_MS = 15_000;
+
+/**
+ * Grouped news, newest first, a page at a time: company news for `symbols` (up to ten), else
+ * market news in `category`. The server caches company news for 30 minutes and market news
+ * for 10, and fetches at most five uncached symbols per request; the rest come back as
+ * `unavailable` and are asked for again shortly.
+ */
+export function useNews(
+  query: { symbols?: string[]; category?: MarketNewsCategory; limit?: number },
+  enabled = true,
+) {
+  const symbols = (query.symbols ?? []).slice(0, NEWS_MAX_SYMBOLS);
+  const category = symbols.length > 0 ? undefined : (query.category ?? "general");
+  const limit = query.limit ?? 20;
+  return useInfiniteQuery({
+    queryKey: ["news", symbols.join(","), category ?? "", limit] as const,
+    queryFn: ({ signal, pageParam }) =>
+      endpoints.news({ symbols, category, page: pageParam, limit }, signal),
+    initialPageParam: 1,
+    getNextPageParam: (last: NewsPage) => (last.hasMore ? last.page + 1 : undefined),
+    enabled,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchInterval: (q) =>
+      q.state.data?.pages[0]?.unavailable.some((u) => u.reason === "rate_limited")
+        ? NEWS_QUOTA_RETRY_MS
+        : false,
+  });
+}
+
+/** The most symbols a briefing covers (the API's limit): holdings first, then the watchlist. */
+export const BRIEFING_MAX_SYMBOLS = 25;
+
+/** How soon to ask again while the API is still filling in some symbols' data. */
+const BRIEFING_FILL_MS = 30_000;
+
+/**
+ * The day's briefing for the market and `symbols`. The API fetches only a few missing
+ * items per request and lists the rest in `coverage` as rate_limited; this asks again
+ * shortly until they are in, then refreshes every 10 minutes.
+ */
+export function useBriefing(symbols: string[], enabled = true) {
+  const list = symbols.slice(0, BRIEFING_MAX_SYMBOLS);
+  return useQuery({
+    queryKey: ["briefing", list.join(",")] as const,
+    queryFn: ({ signal }) => endpoints.briefing(list, signal),
+    enabled,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
+    refetchInterval: (q) =>
+      q.state.data?.coverage.some((c) => c.missing.some((m) => m.reason === "rate_limited"))
+        ? BRIEFING_FILL_MS
+        : 10 * 60_000,
+  });
+}
+
+/** Side-by-side figures for two to four symbols, from the API's caches where it can. */
+export function useCompare(symbols: string[]) {
+  return useQuery({
+    queryKey: ["compare", symbols.join(",")] as const,
+    queryFn: ({ signal }) => endpoints.compare(symbols, signal),
+    enabled: symbols.length >= 2 && symbols.length <= 4,
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: false,
   });
 }

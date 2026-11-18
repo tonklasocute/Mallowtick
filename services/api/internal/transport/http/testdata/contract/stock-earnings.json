@@ -1,0 +1,23 @@
+{
+  "data": {
+    "symbol": "AAPL",
+    "next": {
+      "symbol": "AAPL",
+      "date": "2027-01-28",
+      "hour": "amc",
+      "quarter": 1,
+      "year": 2027,
+      "epsEstimate": 2.35,
+      "revenueEstimate": 124000000000,
+      "epsActual": null,
+      "revenueActual": null
+    },
+    "freshness": {
+      "provider": "finnhub",
+      "latency": "delayed",
+      "asOf": "2026-11-17T21:00:00Z",
+      "fetchedAt": "2026-11-17T21:01:00Z",
+      "stale": false
+    }
+  }
+}

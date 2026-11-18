@@ -1,0 +1,39 @@
+{
+  "data": {
+    "symbol": "AAPL",
+    "today": "2026-11-18",
+    "next": {
+      "symbol": "AAPL",
+      "name": "Apple Inc",
+      "logo": "https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png",
+      "date": "2027-01-27",
+      "hour": "amc",
+      "quarter": 1,
+      "year": 2027,
+      "epsEstimate": 2.9588,
+      "revenueEstimate": 138400000000,
+      "epsActual": null,
+      "revenueActual": null
+    },
+    "last": {
+      "symbol": "AAPL",
+      "name": "Apple Inc",
+      "logo": "https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png",
+      "date": "2026-11-02",
+      "hour": "amc",
+      "quarter": 4,
+      "year": 2026,
+      "epsEstimate": 2.9588,
+      "revenueEstimate": 138400000000,
+      "epsActual": 2.1,
+      "revenueActual": 114477000000
+    },
+    "freshness": {
+      "provider": "finnhub",
+      "latency": "delayed",
+      "asOf": "2026-11-17T21:00:00Z",
+      "fetchedAt": "2026-11-17T21:01:00Z",
+      "stale": false
+    }
+  }
+}

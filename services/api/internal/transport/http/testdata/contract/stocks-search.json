@@ -1,0 +1,17 @@
+{
+  "data": {
+    "query": "apple",
+    "results": [
+      {
+        "symbol": "AAPL",
+        "name": "Apple Inc",
+        "exchange": "NASDAQ",
+        "micCode": "XNGS",
+        "currency": "USD",
+        "type": "Common Stock",
+        "country": "United States",
+        "logo": "https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png"
+      }
+    ]
+  }
+}

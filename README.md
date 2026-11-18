@@ -6,7 +6,12 @@
 
 - **Discover:** search US stocks by ticker or name, see ETF benchmarks (SPY/QQQ/DIA by default), configured popular stocks, and the market status.
 - **Stock Detail:** latest price with freshness, an interactive candlestick chart (1D–5Y) with volume, support/resistance lines, Key Levels with the method explained, and session stats.
-- **Watchlist:** saved symbols with prices, changes and intraday sparklines, stored on the device.
+- **Watchlist:** saved symbols with prices, changes and one-month sparklines, stored on the device.
+- **Portfolio:** holdings typed in by the user, valued in baht or dollars, with upcoming earnings for the stocks held; stored on the device.
+- **Earnings:** a market-wide calendar (today, upcoming, past) with EPS and revenue against estimates, and beat/miss history on Stock Detail.
+- **News:** company and market news as the vendor published it, duplicates grouped with every publisher credited.
+- **Alerts:** price, day-move, earnings and news alerts, kept and checked on the device (IndexedDB) while the app is open.
+- **Research briefing and compare:** rule-based observations from vendor data, each with its facts, sources and method; no advice.
 - **Installable PWA:** manifest, icons, safe areas, and an offline shell. Market data is never cached as live.
 
 No sample or mock prices exist anywhere in the app. Without a provider key, it says so.
@@ -61,6 +66,6 @@ The provider key exists only on the API server. The browser talks to the Next.js
 
 ## Known limitations
 
-See [docs/architecture.md](docs/architecture.md#known-limitations). In short: quotes are polled rather than streamed, benchmarks are ETFs rather than index levels, the watchlist is per device, there are no logos/news/fundamentals, and the free provider plan's daily credits are tight.
+See [docs/architecture.md](docs/architecture.md#known-limitations). In short: quotes are polled rather than streamed, benchmarks are ETFs rather than index levels, the watchlist, portfolio and alerts are per device, alerts work only while the app is open (no push), news is in its original language, and the free provider plans' budgets are tight.
 
 *For information only — not investment advice. Market data by Twelve Data. Charts by TradingView Lightweight Charts™.*

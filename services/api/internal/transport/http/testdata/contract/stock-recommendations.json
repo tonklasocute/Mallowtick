@@ -1,0 +1,22 @@
+{
+  "data": {
+    "symbol": "AAPL",
+    "trends": [
+      {
+        "period": "2026-11-01",
+        "strongBuy": 14,
+        "buy": 23,
+        "hold": 12,
+        "sell": 1,
+        "strongSell": 0
+      }
+    ],
+    "freshness": {
+      "provider": "finnhub",
+      "latency": "delayed",
+      "asOf": "2026-11-17T21:00:00Z",
+      "fetchedAt": "2026-11-17T21:01:00Z",
+      "stale": false
+    }
+  }
+}

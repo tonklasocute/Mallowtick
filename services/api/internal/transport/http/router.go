@@ -4,6 +4,7 @@ package httptransport
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/tonklasocute/mallowtick/services/api/internal/clientlimit"
 	"github.com/tonklasocute/mallowtick/services/api/internal/market"
+	"github.com/tonklasocute/mallowtick/services/api/internal/research"
 )
 
 // MarketService is the application behaviour the handlers depend on.
@@ -31,11 +33,26 @@ type MarketService interface {
 	EarningsHistory(ctx context.Context, symbol market.Symbol) (market.EarningsHistoryResult, error)
 	Fundamentals(ctx context.Context, symbol market.Symbol) (market.FundamentalsResult, error)
 	Recommendations(ctx context.Context, symbol market.Symbol) (market.RecommendationsResult, error)
+	Today() string
+	EarningsCalendar(ctx context.Context, from, to string, symbols []market.Symbol) (market.EarningsCalendarResult, error)
+	SymbolEarnings(ctx context.Context, symbol market.Symbol) (market.SymbolEarningsResult, error)
+	EarningsDetail(ctx context.Context, symbol market.Symbol) (market.EarningsDetailResult, error)
+	News(ctx context.Context, q market.NewsQuery) (market.NewsResult, error)
+	Article(ctx context.Context, id string) (market.NewsArticle, error)
+}
+
+// ResearchService builds rule-based insights from market data.
+type ResearchService interface {
+	Briefing(ctx context.Context, symbols []market.Symbol) (research.Briefing, error)
+	Insights(ctx context.Context, symbols []market.Symbol) (research.InsightsResult, error)
+	Compare(ctx context.Context, symbols []market.Symbol) (research.Comparison, error)
 }
 
 // Options configures the router.
 type Options struct {
-	Service        MarketService
+	Service MarketService
+	// Research serves /research/*; nil leaves those routes out.
+	Research       ResearchService
 	Logger         *slog.Logger
 	CORSOrigins    []string
 	RequestTimeout time.Duration
@@ -49,6 +66,7 @@ type Options struct {
 
 type handlers struct {
 	svc MarketService
+	rs  ResearchService
 	log *slog.Logger
 	now func() time.Time
 }
@@ -58,7 +76,7 @@ func NewRouter(opts Options) http.Handler {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	h := &handlers{svc: opts.Service, log: opts.Logger, now: opts.Now}
+	h := &handlers{svc: opts.Service, rs: opts.Research, log: opts.Logger, now: opts.Now}
 
 	r := gin.New()
 	_ = r.SetTrustedProxies(opts.TrustedProxies) // validated by config
@@ -89,7 +107,147 @@ func NewRouter(opts Options) http.Handler {
 	api.GET("/stocks/:symbol/earnings/history", h.earningsHistory)
 	api.GET("/stocks/:symbol/fundamentals", h.fundamentals)
 	api.GET("/stocks/:symbol/recommendations", h.recommendations)
+	api.GET("/earnings/calendar", h.earningsCalendar)
+	api.GET("/earnings/:symbol", h.symbolEarnings)
+	api.GET("/earnings/:symbol/history", h.earningsDetail)
+	api.GET("/news", h.news)
+	api.GET("/news/:id", h.article)
+	if opts.Research != nil {
+		api.GET("/research/briefing", h.briefing)
+		api.GET("/research/insights", h.insights)
+		api.GET("/research/compare", h.compare)
+	}
 	return r
+}
+
+// researchSymbols parses ?symbols= with between lo and hi symbols.
+func researchSymbols(raw string, lo, hi int) ([]market.Symbol, error) {
+	syms, err := market.ParseSymbolFilter(raw)
+	if err != nil {
+		return nil, err
+	}
+	if len(syms) < lo || len(syms) > hi {
+		return nil, fmt.Errorf("%w: give %d to %d symbols", market.ErrInvalidInput, lo, hi)
+	}
+	return syms, nil
+}
+
+func (h *handlers) briefing(c *gin.Context) {
+	syms, err := researchSymbols(c.Query("symbols"), 0, research.MaxSymbols)
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	res, err := h.rs.Briefing(c.Request.Context(), syms)
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	ok(c, res)
+}
+
+func (h *handlers) insights(c *gin.Context) {
+	syms, err := researchSymbols(c.Query("symbols"), 1, research.MaxSymbols)
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	res, err := h.rs.Insights(c.Request.Context(), syms)
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	ok(c, res)
+}
+
+func (h *handlers) compare(c *gin.Context) {
+	syms, err := researchSymbols(c.Query("symbols"), research.MinCompare, research.MaxCompare)
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	res, err := h.rs.Compare(c.Request.Context(), syms)
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	ok(c, res)
+}
+
+func (h *handlers) news(c *gin.Context) {
+	q, err := market.ParseNewsQuery(market.NewsParams{
+		Symbols: c.Query("symbols"), Category: c.Query("category"), From: c.Query("from"), To: c.Query("to"),
+		Page: c.Query("page"), Limit: c.Query("limit"),
+	}, h.svc.Today())
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	res, err := h.svc.News(c.Request.Context(), q)
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	ok(c, res)
+}
+
+func (h *handlers) article(c *gin.Context) {
+	id, err := market.ParseArticleID(c.Param("id"))
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	a, err := h.svc.Article(c.Request.Context(), id)
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	ok(c, a)
+}
+
+func (h *handlers) earningsCalendar(c *gin.Context) {
+	from, to, err := market.ParseCalendarRange(c.Query("from"), c.Query("to"), h.svc.Today())
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	symbols, err := market.ParseSymbolFilter(c.Query("symbols"))
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	res, err := h.svc.EarningsCalendar(c.Request.Context(), from, to, symbols)
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	ok(c, res)
+}
+
+func (h *handlers) symbolEarnings(c *gin.Context) {
+	sym, valid := h.symbolParam(c)
+	if !valid {
+		return
+	}
+	res, err := h.svc.SymbolEarnings(c.Request.Context(), sym)
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	ok(c, res)
+}
+
+func (h *handlers) earningsDetail(c *gin.Context) {
+	sym, valid := h.symbolParam(c)
+	if !valid {
+		return
+	}
+	res, err := h.svc.EarningsDetail(c.Request.Context(), sym)
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	ok(c, res)
 }
 
 func (h *handlers) health(c *gin.Context) {

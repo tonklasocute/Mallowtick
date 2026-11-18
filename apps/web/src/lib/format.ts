@@ -124,3 +124,16 @@ export function formatCalendarDate(date: string, unit: "day" | "month" = "day"):
     timeZone: "UTC",
   });
 }
+
+/** "5 นาทีที่แล้ว", "3 ชม. ที่แล้ว", "2 วันที่แล้ว" for a past instant. */
+export function formatRelativeTime(iso: string | null | undefined, now: Date = new Date()): string {
+  if (!iso) return EMPTY;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return EMPTY;
+  const minutes = Math.floor((now.getTime() - t) / 60_000);
+  if (minutes < 1) return "เมื่อสักครู่";
+  if (minutes < 60) return `${minutes} นาทีที่แล้ว`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} ชม. ที่แล้ว`;
+  return `${Math.floor(hours / 24)} วันที่แล้ว`;
+}
