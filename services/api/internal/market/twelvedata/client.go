@@ -18,12 +18,20 @@ import (
 
 	"github.com/tonklasocute/mallowtick/services/api/internal/market"
 	"github.com/tonklasocute/mallowtick/services/api/internal/ratebudget"
+	"github.com/tonklasocute/mallowtick/services/api/internal/resilience"
 )
 
 // ProviderName identifies this adapter in responses and logs.
 const ProviderName = "twelvedata"
 
 const maxBodyBytes = 8 << 20
+
+// After breakerThreshold failed requests in a row the adapter stops calling
+// Twelve Data for breakerCooldown, so no credits go to a vendor that is down.
+const (
+	breakerThreshold = 5
+	breakerCooldown  = 30 * time.Second
+)
 
 // Config configures the client.
 type Config struct {
@@ -46,6 +54,7 @@ type Client struct {
 	baseURL *url.URL
 	http    *http.Client
 	budget  *ratebudget.Budget
+	breaker *resilience.Breaker
 	burst   int
 	maxWait time.Duration
 	log     *slog.Logger
@@ -79,6 +88,7 @@ func New(cfg Config) (*Client, error) {
 		baseURL: base,
 		http:    cfg.HTTPClient,
 		budget:  ratebudget.New(cfg.CreditsPerMinute, time.Minute),
+		breaker: resilience.New(breakerThreshold, breakerCooldown, nil),
 		burst:   cfg.CreditsPerMinute,
 		maxWait: cfg.MaxWait,
 		log:     cfg.Logger,
@@ -87,6 +97,9 @@ func New(cfg Config) (*Client, error) {
 
 func (c *Client) Name() string     { return ProviderName }
 func (c *Client) Configured() bool { return true }
+
+// VendorStats implements market.VendorMonitor.
+func (c *Client) VendorStats() resilience.Stats { return c.breaker.Stats() }
 
 // apiError is Twelve Data's error body. Errors are often returned with HTTP
 // 200, so every response is checked for status "error".
@@ -100,10 +113,19 @@ func (e apiError) isError() bool { return e.Status == "error" }
 
 // get spends credits, performs a GET, and returns the raw body after
 // checking for an error envelope.
-func (c *Client) get(ctx context.Context, path string, params url.Values, credits int) ([]byte, error) {
+func (c *Client) get(ctx context.Context, path string, params url.Values, credits int) (_ []byte, err error) {
+	// The breaker is asked first, so a request it would refuse costs no
+	// credits; when the credits aren't there its slot is given back.
+	if err := c.breaker.Allow(); err != nil {
+		// Twelve Data keeps failing: don't spend credits on it.
+		return nil, fmt.Errorf("%w: twelvedata: %w", market.ErrUnavailable, err)
+	}
 	if err := c.spend(ctx, credits); err != nil {
+		c.breaker.Abandon()
 		return nil, err
 	}
+	reason := "unreachable"
+	defer func() { recordOutcome(ctx, c.breaker, err, reason) }()
 
 	u := c.baseURL.JoinPath(path)
 	u.RawQuery = params.Encode()
@@ -131,10 +153,12 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, credit
 		return nil, fmt.Errorf("%w: read %s response: %w", market.ErrUnavailable, path, err)
 	}
 
+	reason = fmt.Sprintf("http_%d", resp.StatusCode)
 	var probe apiError
 	_ = json.Unmarshal(body, &probe) // a non-object body (e.g. an array) is not an error envelope
 	switch {
 	case probe.isError():
+		reason = fmt.Sprintf("api_%d", probe.Code)
 		err = mapError(probe.Code, probe.Message)
 	case resp.StatusCode >= 300:
 		err = mapError(resp.StatusCode, http.StatusText(resp.StatusCode))
@@ -161,6 +185,22 @@ func (c *Client) spend(ctx context.Context, credits int) error {
 		return fmt.Errorf("%w: %w", market.ErrRateLimited, err)
 	}
 	return err
+}
+
+// recordOutcome tells the breaker how a sent request ended: an answer of any
+// kind (including "not found" or a rate limit) means Twelve Data is up; only
+// ErrUnavailable counts against it, and a request the caller cancelled says nothing.
+func recordOutcome(ctx context.Context, b *resilience.Breaker, err error, reason string) {
+	switch {
+	case err == nil:
+		b.Success()
+	case ctx.Err() != nil:
+		b.Abandon()
+	case errors.Is(err, market.ErrUnavailable):
+		b.Failure(reason)
+	default:
+		b.Success()
+	}
 }
 
 func mapError(code int, message string) error {

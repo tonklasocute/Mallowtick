@@ -1,5 +1,9 @@
 import type {
+  Briefing,
   CandleSeries,
+  Comparison,
+  EarningsCalendar,
+  EarningsDetail,
   ChartRange,
   EarningsHistory,
   EarningsResult,
@@ -8,12 +12,16 @@ import type {
   Health,
   LevelsResponse,
   MarketOverview,
+  MarketNewsCategory,
   MarketStatus,
+  NewsArticle,
+  NewsPage,
   Quote,
   QuoteBatch,
   Recommendations,
   SearchResponse,
   SectorsResult,
+  SymbolEarnings,
 } from "@/types/api";
 
 import { apiGet } from "./client";
@@ -48,6 +56,40 @@ export const endpoints = {
     apiGet<Recommendations>(`/stocks/${enc(symbol)}/recommendations`, undefined, { signal }),
   fundamentals: (symbol: string, signal?: Signal) =>
     apiGet<Fundamentals>(`/stocks/${enc(symbol)}/fundamentals`, undefined, { signal }),
+  earningsCalendar: (from: string, to: string, symbols: string[] = [], signal?: Signal) =>
+    apiGet<EarningsCalendar>(
+      "/earnings/calendar",
+      { from, to, symbols: symbols.length > 0 ? symbols.join(",") : undefined },
+      { signal },
+    ),
+  symbolEarnings: (symbol: string, signal?: Signal) =>
+    apiGet<SymbolEarnings>(`/earnings/${enc(symbol)}`, undefined, { signal }),
+  earningsDetail: (symbol: string, signal?: Signal) =>
+    apiGet<EarningsDetail>(`/earnings/${enc(symbol)}/history`, undefined, { signal }),
+  news: (
+    query: { symbols?: string[]; category?: MarketNewsCategory; page?: number; limit?: number },
+    signal?: Signal,
+  ) =>
+    apiGet<NewsPage>(
+      "/news",
+      {
+        symbols: query.symbols?.length ? query.symbols.join(",") : undefined,
+        category: query.symbols?.length ? undefined : query.category,
+        page: query.page ? String(query.page) : undefined,
+        limit: query.limit ? String(query.limit) : undefined,
+      },
+      { signal },
+    ),
+  article: (id: string, signal?: Signal) =>
+    apiGet<NewsArticle>(`/news/${enc(id)}`, undefined, { signal }),
+  briefing: (symbols: string[], signal?: Signal) =>
+    apiGet<Briefing>(
+      "/research/briefing",
+      { symbols: symbols.length > 0 ? symbols.join(",") : undefined },
+      { signal },
+    ),
+  compare: (symbols: string[], signal?: Signal) =>
+    apiGet<Comparison>("/research/compare", { symbols: symbols.join(",") }, { signal }),
   levels: (symbol: string, range: ChartRange, signal?: Signal) =>
     apiGet<LevelsResponse>(`/stocks/${enc(symbol)}/levels`, { range }, { signal }),
 };

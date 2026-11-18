@@ -1,0 +1,36 @@
+{
+  "data": {
+    "symbol": "AAPL",
+    "interval": "1day",
+    "currency": "USD",
+    "exchangeTimezone": "America/New_York",
+    "candles": [
+      {
+        "time": "2026-11-17T00:00:00-05:00",
+        "open": 340,
+        "high": 350,
+        "low": 338,
+        "close": 347.73,
+        "volume": 41000000
+      }
+    ],
+    "warmup": [
+      {
+        "time": "2026-11-16T00:00:00-05:00",
+        "open": 340,
+        "high": 350,
+        "low": 338,
+        "close": 347.73,
+        "volume": 41000000
+      }
+    ],
+    "range": "1m",
+    "freshness": {
+      "provider": "twelvedata+finnhub",
+      "latency": "delayed",
+      "asOf": "2026-11-17T21:00:00Z",
+      "fetchedAt": "2026-11-17T21:01:00Z",
+      "stale": false
+    }
+  }
+}

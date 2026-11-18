@@ -111,3 +111,21 @@ func TestReportsAllInvalidValues(t *testing.T) {
 		}
 	}
 }
+
+func TestVendorLatencies(t *testing.T) {
+	cfg, err := Load(env(map[string]string{"MARKET_DATA_LATENCY": "delayed"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TwelveData.Latency != market.LatencyDelayed || cfg.Finnhub.Latency != market.LatencyDelayed {
+		t.Fatalf("vendor latencies must default to MARKET_DATA_LATENCY: %s %s", cfg.TwelveData.Latency, cfg.Finnhub.Latency)
+	}
+	cfg, err = Load(env(map[string]string{"MARKET_DATA_LATENCY": "delayed", "FINNHUB_LATENCY": "realtime"}))
+	if err != nil || cfg.Finnhub.Latency != market.LatencyRealtime || cfg.TwelveData.Latency != market.LatencyDelayed {
+		t.Fatalf("override = %+v %+v %v", cfg.Finnhub, cfg.TwelveData, err)
+	}
+	if _, err := Load(env(map[string]string{"TWELVEDATA_LATENCY": "instant"})); err == nil ||
+		!strings.Contains(err.Error(), "TWELVEDATA_LATENCY") {
+		t.Fatalf("an invalid latency must be reported, got %v", err)
+	}
+}

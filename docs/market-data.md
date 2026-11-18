@@ -36,7 +36,7 @@ What the Finnhub free plan gives, as checked with a real key on 2026-10-26:
 - **`/stock/metric`:** the 52-week range, cached for 24h and fetched only for single-symbol quotes (Stock Detail).
 - **`/search` has a burst limit** below the per-minute allowance (checked 2026-10-27, a minute after any other call: 6 searches at once gave 2 × 429, 6 in a row, about 3 a second, none). The client runs one search at a time. A 429 marks the whole per-minute budget spent, so a burst would stall every other call for a minute.
 - **ETF names** come from `/search`, since `/stock/profile2` is empty for ETFs. When that search fails, the profile is kept for 2 minutes without a name, so the quote and the fundamentals still go through and a retry doesn't spend the profile call again.
-- **`/calendar/earnings`:** upcoming reports only. A past date range returns an empty list, so past earnings markers on the chart are not possible on this plan.
+- **`/calendar/earnings`:** checked again 2026-11-18: past ranges now return reports with `epsActual` and `revenueActual` (on 2026-10-26 they came back empty). Without a symbol it lists the whole market, **at most 1,500 rows** (the earliest days are cut). With a symbol it gives only the latest past report and the next one, so revenue against its estimate exists for the latest quarter only. EPS and revenue are in the company's reporting currency, not named, and not USD for foreign ADRs (PDD and Baidu report in yuan).
 
 The service fills in what Finnhub quotes lack:
 
@@ -135,7 +135,7 @@ Streaming is not implemented because the Basic and Grow plans only stream a hand
   - Outside the session every candle series is kept until the next open.
   - **Search** results are cached for 24 h.
 - **Concurrent identical requests share one provider call** (singleflight). Batch quotes only fetch the symbols missing from cache.
-- **A local credit budget** (`TWELVEDATA_CREDITS_PER_MINUTE`, `internal/market/twelvedata/budget.go`) books credits before each request the way Twelve Data counts them: at most N credits in any **sliding 60-second window**, not per calendar minute and not as a refilling token bucket. Both of those let a 9th credit through and the provider answered 429 (observed: 1 credit at :43, 7 at :54, 1 at :01 of the next minute). A request waits up to `TWELVEDATA_MAX_WAIT` (10s) for room and then fails with `rate_limited` without calling the provider. If the provider still answers 429 (e.g. another app uses the same key), the window is marked full.
+- **A local credit budget** (`TWELVEDATA_CREDITS_PER_MINUTE`, `internal/ratebudget`) books credits before each request the way Twelve Data counts them: at most N credits in any **sliding 60-second window**, not per calendar minute and not as a refilling token bucket. Both of those let a 9th credit through and the provider answered 429 (observed: 1 credit at :43, 7 at :54, 1 at :01 of the next minute). A request waits up to `TWELVEDATA_MAX_WAIT` (10s) for room and then fails with `rate_limited` without calling the provider. If the provider still answers 429 (e.g. another app uses the same key), the window is marked full.
 - **Batch quotes take what fits:** a batch is fetched in the order given, only as far as credits allow. The rest come back in `unavailable` with reason `rate_limited`, and the next poll fills them in. Discover lists benchmarks first, so they win.
 - **Stale fallback:** if a refresh fails (other than "not found"), a value fetched within `STALE_RETENTION` is returned with `stale: true`.
 - **Per-client shares** (`internal/clientlimit`): each client (IP address, or IPv6 /64) may spend at most `CLIENT_TWELVEDATA_CREDITS_PER_DAY` (200 of the 800) Twelve Data credits and `CLIENT_FINNHUB_CALLS_PER_MINUTE` (45 of the 60) Finnhub calls. Only calls that miss the cache spend from a share, booked in each adapter just before the shared window (`market.TakeAllowance`), so a client over its share still gets cached data, and stale data where a refresh is due, with `rate_limited` only for what nobody has fetched yet. Twelve Data's per-minute window is not split: a batch quote takes up to 8 credits at once, more than a per-client minute share could hold. A second, simpler cap (`CLIENT_REQUESTS_PER_MINUTE`, 120) answers `too_many_requests` to a client that floods the API. Calls without a client (the startup status warm-up) aren't limited. A cache miss shared by concurrent requests (singleflight) is charged to the request that started it.
@@ -158,3 +158,24 @@ To stretch the budget further, raise `QUOTE_CACHE_TTL` or trim `POPULAR_SYMBOLS`
 ## Adding another provider
 
 Implement `market.Provider` (`services/api/internal/market/provider.go`) in a new package under `internal/market/`, map vendor errors onto the `market.Err*` sentinels, and select it in `cmd/api/main.go`. Handlers, caching, freshness, and the UI need no changes.
+
+## Investment intelligence: sources and budget (November 2026)
+
+Checked with real keys on 2026-11-18; see [plans/investment-intelligence.md](plans/investment-intelligence.md).
+
+| Feature | Calls | Cost |
+|---|---|---|
+| Earnings calendar (`/earnings`, portfolio, alerts, briefing) | Finnhub `/calendar/earnings` per week, split while a week hits 1,500 rows | 1–3 calls per week; past weeks kept 24h, the current 30 min, later 6h; shared by every user |
+| One symbol's latest and next report (`/earnings/{symbol}`, Stock Detail badge) | Finnhub `/calendar/earnings?symbol=` | 1 call per symbol per 12h (1h near a report) |
+| EPS history with revenue (`/earnings/{symbol}/history`) | the cached EPS history + the call above | none extra |
+| Company news (`/news`, Stock Detail, alerts, briefing) | Finnhub `/company-news` | 1 call per symbol per 30 min; at most 5 uncached symbols per request |
+| Market news | Finnhub `/news?category=` | 1 call per category per 10 min |
+| Briefing | quotes, the calendar, news (above), and per request at most 2 uncached daily series (Twelve Data, 1 credit each) and 3 uncached EPS histories (Finnhub, 2 calls each) | while filling in, the client asks every 30 s, at most ~4 Twelve Data credits a minute; then every 10 min |
+| Compare (2–4 symbols) | quote, fundamentals, EPS history, recommendations per symbol | ~6 Finnhub calls per uncached symbol, one symbol at a time |
+| Alerts | the quotes, calendar and news the app fetches; for rule symbols a batch quote every 5 min and the calendar and news every 30 min, only while the app is open and visible | about one Finnhub call per price-rule symbol every 5 min |
+
+Finnhub `/company-news` returns about 250 articles a week for AAPL (mostly Yahoo); its `url` is a Finnhub redirect to the publisher (no token needed) and `related` is only the asked symbol. `/news?category=general` returns 100 market articles (Reuters links via Google News) with no tickers. The API keeps the vendor's text and links and names the publisher from `source`. Finnhub's terms for showing news, like those for the market data and logos, have not been checked for public use.
+
+Twelve Data's daily bars of completed sessions carry full-market volume (AAPL 31–50M shares on 2026-11-11…17), unlike its intraday bars; the briefing's volume rule uses completed sessions only.
+
+**Circuit breaker:** after 5 failed calls in a row (unreachable, 5xx, timeouts; not refusals such as 404 or 429) an adapter stops calling its vendor for 30 s, books no budget for refused calls, then lets one probe through. `/health` reports each vendor's state, calls and failures under `provider.vendors`. The API does not retry failed calls itself: the client retries with jittered backoff, and Twelve Data hasn't been checked for whether failed requests cost credits.

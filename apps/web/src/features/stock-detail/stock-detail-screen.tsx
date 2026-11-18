@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronLeft } from "lucide-react";
+import { BellPlus, ChevronLeft } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -18,6 +19,7 @@ import type { ChartRange } from "@/types/api";
 import { AnalystRatings } from "./analyst-ratings";
 import { ChartPanel } from "./chart-panel";
 import { CompanyFundamentals } from "./company-fundamentals";
+import { CompanyNews } from "./company-news";
 import { EarningsHistory } from "./earnings-history";
 import { KeyLevels } from "./key-levels";
 import { PriceHeader } from "./price-header";
@@ -83,7 +85,19 @@ export function StockDetailScreen({ symbol }: { symbol: string }) {
             )}
           </p>
         }
-        trailing={<WatchlistToggle symbol={symbol} className={HEADER_BUTTON} />}
+        trailing={
+          <>
+            <Link
+              href={`/alerts?new=${encodeURIComponent(symbol)}`}
+              aria-label={`ตั้งการแจ้งเตือน ${symbol}`}
+              title={`ตั้งการแจ้งเตือน ${symbol}`}
+              className={`inline-flex items-center justify-center rounded-full text-slate transition hover:bg-cream-deep ${HEADER_BUTTON}`}
+            >
+              <BellPlus aria-hidden className="size-5" strokeWidth={2.2} />
+            </Link>
+            <WatchlistToggle symbol={symbol} className={HEADER_BUTTON} />
+          </>
+        }
       />
       <main className="pb-nav space-y-4 px-4">
         <PriceHeader symbol={symbol} query={quote} priceRef={priceRef} />
@@ -98,6 +112,7 @@ export function StockDetailScreen({ symbol }: { symbol: string }) {
         <CompanyFundamentals symbol={symbol} />
         <EarningsHistory symbol={symbol} />
         <AnalystRatings symbol={symbol} />
+        <CompanyNews symbol={symbol} />
         <div className="flex items-center gap-3 rounded-[20px] border-[1.5px] border-dashed border-line-strong p-3.5 text-[11.5px] leading-[1.7] font-light text-slate">
           <Mascot size={44} />
           <p>

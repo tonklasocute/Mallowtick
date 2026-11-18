@@ -85,5 +85,38 @@ describe("MoreScreen data sources", () => {
     expect(screen.getByText("กราฟแท่งเทียน").nextSibling).toHaveTextContent("Twelve Data");
     expect(screen.getByText("วันประกาศงบ").nextSibling).toHaveTextContent("Finnhub");
     expect(screen.getByText(/ข้อมูลตลาดโดย Finnhub และ Twelve Data/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/ไม่ได้ระบุ — ราคาจะแสดงพร้อมเวลาของข้อมูลเท่านั้น/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows each vendor's latency when their plans differ", async () => {
+    vi.stubGlobal("matchMedia", () => ({
+      matches: false,
+      addEventListener() {},
+      removeEventListener() {},
+    }));
+    mockApi({
+      "/api/v1/health": () =>
+        ok({
+          status: "ok",
+          time: NOW.toISOString(),
+          provider: {
+            name: "finnhub+twelvedata",
+            configured: true,
+            latency: "unknown",
+            sources: {
+              quotes: { name: "finnhub", configured: true, latency: "realtime" },
+              candles: { name: "twelvedata", configured: true, latency: "delayed" },
+              fx: { name: "twelvedata", configured: true, latency: "delayed" },
+            },
+          },
+        }),
+    });
+    renderWithProviders(<MoreScreen />);
+    expect((await screen.findByText("ราคาล่าสุด")).nextSibling).toHaveTextContent("เรียลไทม์");
+    expect(screen.getByText("กราฟแท่งเทียน").nextSibling).toHaveTextContent("ล่าช้า");
+    expect(screen.getByText("อัตราแลกเปลี่ยน").nextSibling).toHaveTextContent("Twelve Data");
+    expect(screen.getByText("แตกต่างกันตามแหล่งข้อมูล (ดูด้านบน)")).toBeInTheDocument();
   });
 });

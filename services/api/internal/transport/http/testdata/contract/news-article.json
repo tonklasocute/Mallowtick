@@ -1,0 +1,30 @@
+{
+  "data": {
+    "id": "fh-143886409",
+    "headline": "Apple supplier raises outlook",
+    "summary": "The supplier said demand for…",
+    "url": "https://finnhub.io/api/news?id=658d34eb",
+    "source": "Yahoo",
+    "publishedAt": "2026-11-17T19:00:00Z",
+    "category": "company",
+    "related": [
+      "AAPL",
+      "MSFT"
+    ],
+    "sources": [
+      {
+        "id": "fh-143886409",
+        "source": "Yahoo",
+        "url": "https://finnhub.io/api/news?id=658d34eb",
+        "publishedAt": "2026-11-17T19:00:00Z"
+      },
+      {
+        "id": "fh-143886777",
+        "source": "Benzinga",
+        "url": "https://finnhub.io/api/news?id=77aa01",
+        "publishedAt": "2026-11-17T20:00:00Z"
+      }
+    ],
+    "provider": "finnhub"
+  }
+}

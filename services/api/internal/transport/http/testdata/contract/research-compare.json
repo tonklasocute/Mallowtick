@@ -1,0 +1,92 @@
+{
+  "data": {
+    "generatedAt": "2026-11-17T21:00:00Z",
+    "items": [
+      {
+        "symbol": "AAPL",
+        "name": "Apple Inc",
+        "logo": "https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png",
+        "currency": "USD",
+        "price": 347.73,
+        "changePercent": -0.14,
+        "asOf": "2026-11-17T21:00:00Z",
+        "fundamentals": {
+          "symbol": "AAPL",
+          "industry": "Technology",
+          "country": "US",
+          "ipoDate": "1980-12-12",
+          "website": "https://www.apple.com/",
+          "sharesOutstanding": 14800000000,
+          "metrics": {
+            "marketCap": 3200000000000,
+            "enterpriseValue": 3300000000000,
+            "peTTM": 35.1,
+            "psTTM": 8.4,
+            "pb": 52.3,
+            "epsTTM": 7.4,
+            "revenueGrowthYoY": 6.1,
+            "revenueGrowth5Y": 8.2,
+            "epsGrowthYoY": 10.2,
+            "grossMarginTTM": 46.5,
+            "operatingMarginTTM": 31.2,
+            "netMarginTTM": 24.3,
+            "roeTTM": 151.3,
+            "currentRatio": 0.87,
+            "debtToEquity": 1.5,
+            "dividendYield": 0.45,
+            "payoutRatioTTM": 15.1,
+            "beta": 1.2,
+            "priceReturnYTD": 18.2,
+            "priceReturn1Y": 22.4,
+            "sp500ReturnYTD": 11.4,
+            "sp500Return1Y": 13.1,
+            "fiftyTwoWeekHigh": 351.73,
+            "fiftyTwoWeekLow": 243.42,
+            "fiftyTwoWeekHighDate": "2026-11-12",
+            "fiftyTwoWeekLowDate": "2026-04-08"
+          }
+        },
+        "epsRecord": {
+          "compared": 1,
+          "beats": 1,
+          "misses": 0,
+          "inline": 0
+        },
+        "lastQuarter": {
+          "period": "2026-09-30",
+          "year": 2026,
+          "quarter": 4,
+          "actual": 2.1,
+          "estimate": 2.0263,
+          "surprise": 0.0737,
+          "surprisePercent": 3.637,
+          "reportDate": "2026-11-02",
+          "hour": "amc",
+          "epsResult": "beat",
+          "revenueActual": 114477000000,
+          "revenueEstimate": 115660000000,
+          "revenueSurprisePercent": -1.02,
+          "revenueResult": "miss"
+        },
+        "ratings": {
+          "period": "2026-11-01",
+          "strongBuy": 14,
+          "buy": 23,
+          "hold": 12,
+          "sell": 1,
+          "strongSell": 0
+        },
+        "sources": [
+          "finnhub"
+        ],
+        "missing": [
+          {
+            "data": "ratings",
+            "reason": "rate_limited"
+          }
+        ]
+      }
+    ],
+    "disclaimer": "ข้อสังเกตสร้างโดยกฎของ Mallowtick จากข้อมูลของผู้ให้บริการ เพื่อประกอบการศึกษาเท่านั้น ไม่ใช่คำแนะนำให้ซื้อหรือขาย และไม่ได้บอกสาเหตุของการเปลี่ยนแปลงราคา"
+  }
+}

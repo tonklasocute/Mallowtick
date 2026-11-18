@@ -3,6 +3,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 
+import { AlertsProvider } from "@/features/alerts/use-alerts";
 import {
   LocalStoragePortfolioRepository,
   MemoryPortfolioRepository,
@@ -44,7 +45,9 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       <WatchlistProvider repository={repository}>
-        <PortfolioProvider repository={portfolio}>{children}</PortfolioProvider>
+        <PortfolioProvider repository={portfolio}>
+          <AlertsProvider>{children}</AlertsProvider>
+        </PortfolioProvider>
       </WatchlistProvider>
     </QueryClientProvider>
   );

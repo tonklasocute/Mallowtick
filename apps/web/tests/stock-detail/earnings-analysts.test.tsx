@@ -58,11 +58,36 @@ const QUARTERS = [
   },
 ];
 
+/** The API's detail fields for quarters the calendar no longer lists. */
+const NO_CALENDAR = {
+  reportDate: "",
+  hour: "",
+  revenueActual: null,
+  revenueEstimate: null,
+  revenueSurprisePercent: null,
+  revenueResult: "",
+};
+
+function detail(quarters: typeof QUARTERS) {
+  return quarters.map((q) => ({
+    ...q,
+    ...NO_CALENDAR,
+    epsResult: q.actual > q.estimate ? "beat" : q.actual < q.estimate ? "miss" : "inline",
+  }));
+}
+
+const RECORD = { compared: 4, beats: 3, misses: 1, inline: 0 };
+
 describe("EarningsHistory", () => {
   it("lists EPS against estimates and counts the beats", async () => {
     mockApi({
-      "/api/v1/stocks/RKLB/earnings/history": () =>
-        ok({ symbol: "RKLB", quarters: QUARTERS, freshness: freshness({ provider: "finnhub" }) }),
+      "/api/v1/earnings/RKLB/history": () =>
+        ok({
+          symbol: "RKLB",
+          quarters: detail(QUARTERS),
+          epsRecord: RECORD,
+          freshness: freshness({ provider: "finnhub" }),
+        }),
     });
     renderWithProviders(<EarningsHistory symbol="RKLB" />);
 
@@ -84,10 +109,53 @@ describe("EarningsHistory", () => {
     expect(screen.getByText("+4.46%")).toHaveClass("text-up");
   });
 
+  it("shows the latest quarter's revenue and report date from the calendar", async () => {
+    const [latest, ...older] = detail(QUARTERS);
+    mockApi({
+      "/api/v1/earnings/RKLB/history": () =>
+        ok({
+          symbol: "RKLB",
+          quarters: [
+            {
+              ...latest,
+              reportDate: "2026-08-07",
+              hour: "amc",
+              revenueActual: 144_500_000,
+              revenueEstimate: 135_000_000,
+              revenueSurprisePercent: 7.037,
+              revenueResult: "beat",
+            },
+            ...older,
+          ],
+          epsRecord: RECORD,
+          freshness: freshness({ provider: "finnhub" }),
+        }),
+    });
+    renderWithProviders(<EarningsHistory symbol="RKLB" />);
+
+    expect(await screen.findByText(/รายได้ Q2 ปีงบ 2026/)).toHaveTextContent(
+      "รายได้ Q2 ปีงบ 2026 · ประกาศ 7 ส.ค. 2026",
+    );
+    expect(screen.getByText("144.5M")).toBeInTheDocument();
+    expect(screen.getByText("คาด 135M")).toBeInTheDocument();
+    expect(screen.getByText(/ดีกว่าคาด$/)).toHaveTextContent("▲ +7.04% ดีกว่าคาด");
+    // The reported quarter shows its report date instead of the fiscal period's end.
+    expect(screen.getByText("Q2 2026").closest("tr")).toHaveTextContent(
+      "ประกาศ 7 ส.ค. 2026 · หลังตลาดปิด",
+    );
+    // Older quarters have no revenue in the vendor's data, so no revenue row is invented.
+    expect(screen.getAllByText(/^รายได้/)).toHaveLength(1);
+  });
+
   it("shows nothing for a symbol without reports or without a vendor", async () => {
     const fetchMock = mockApi({
-      "/api/v1/stocks/RKLB/earnings/history": () =>
-        ok({ symbol: "RKLB", quarters: [], freshness: freshness({ provider: "finnhub" }) }),
+      "/api/v1/earnings/RKLB/history": () =>
+        ok({
+          symbol: "RKLB",
+          quarters: [],
+          epsRecord: { compared: 0, beats: 0, misses: 0, inline: 0 },
+          freshness: freshness({ provider: "finnhub" }),
+        }),
     });
     const first = renderWithProviders(<EarningsHistory symbol="RKLB" />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -95,7 +163,7 @@ describe("EarningsHistory", () => {
     first.unmount();
 
     mockApi({
-      "/api/v1/stocks/RKLB/earnings/history": () => apiError(503, "provider_not_configured"),
+      "/api/v1/earnings/RKLB/history": () => apiError(503, "provider_not_configured"),
     });
     const second = renderWithProviders(<EarningsHistory symbol="RKLB" />);
     await waitFor(() => expect(second.container).toBeEmptyDOMElement());

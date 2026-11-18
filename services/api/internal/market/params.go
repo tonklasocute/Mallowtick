@@ -3,6 +3,7 @@ package market
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -158,3 +159,140 @@ func ParseRange(raw string, def Range) (Range, error) {
 
 // Spec returns the provider request for r. r must come from ParseRange.
 func (r Range) Spec() RangeSpec { return rangeSpecs[r] }
+
+// MaxFilterSymbols bounds a symbol filter: a watchlist and a portfolio of
+// MaxBatchSymbols each.
+const MaxFilterSymbols = 2 * MaxBatchSymbols
+
+// ParseSymbolFilter parses an optional comma-separated filter: empty means no
+// filter, and at most MaxFilterSymbols are accepted.
+func ParseSymbolFilter(raw string) ([]Symbol, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	if len(parts) > MaxFilterSymbols {
+		return nil, fmt.Errorf("%w: at most %d symbols per request", ErrInvalidInput, MaxFilterSymbols)
+	}
+	out := make([]Symbol, 0, len(parts))
+	seen := make(map[Symbol]bool, len(parts))
+	for _, p := range parts {
+		if strings.TrimSpace(p) == "" {
+			continue
+		}
+		s, err := ParseSymbol(p)
+		if err != nil {
+			return nil, err
+		}
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
+// ParseDate validates a YYYY-MM-DD date; empty gives def.
+func ParseDate(raw, def string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return def, nil
+	}
+	t, err := time.Parse(time.DateOnly, raw)
+	if err != nil {
+		return "", fmt.Errorf("%w: %q is not a date like 2026-11-18", ErrInvalidInput, raw)
+	}
+	return t.Format(time.DateOnly), nil
+}
+
+// ParseCalendarRange validates an earnings calendar range around today
+// (YYYY-MM-DD). Defaults: today through the next 13 days.
+func ParseCalendarRange(rawFrom, rawTo, today string) (from, to string, err error) {
+	if from, err = ParseDate(rawFrom, today); err != nil {
+		return "", "", err
+	}
+	if to, err = ParseDate(rawTo, AddDays(from, 13)); err != nil {
+		return "", "", err
+	}
+	switch {
+	case to < from:
+		return "", "", fmt.Errorf("%w: to must not be before from", ErrInvalidInput)
+	case daysBetween(from, to) >= CalendarMaxDays:
+		return "", "", fmt.Errorf("%w: at most %d days per request", ErrInvalidInput, CalendarMaxDays)
+	case from < AddDays(today, -CalendarReachDays) || to > AddDays(today, CalendarReachDays):
+		return "", "", fmt.Errorf("%w: dates must be within %d days of today", ErrInvalidInput, CalendarReachDays)
+	}
+	return from, to, nil
+}
+
+// NewsParams are the raw query parameters of GET /news.
+type NewsParams struct {
+	Symbols, Category, From, To, Page, Limit string
+}
+
+// ParseNewsQuery validates GET /news parameters. Company news (symbols) can be
+// filtered within the last NewsWindowDays; market news has no date bound of its own.
+func ParseNewsQuery(p NewsParams, today string) (NewsQuery, error) {
+	symbols, err := ParseSymbolFilter(p.Symbols)
+	if err != nil {
+		return NewsQuery{}, err
+	}
+	if len(symbols) > NewsMaxSymbols {
+		return NewsQuery{}, fmt.Errorf("%w: at most %d symbols per news request", ErrInvalidInput, NewsMaxSymbols)
+	}
+	q := NewsQuery{Symbols: symbols}
+	switch c := strings.ToLower(strings.TrimSpace(p.Category)); c {
+	case "", NewsGeneral, NewsMerger:
+		q.Category = c
+	case "company":
+		if len(symbols) == 0 {
+			return NewsQuery{}, fmt.Errorf("%w: company news needs symbols", ErrInvalidInput)
+		}
+	default:
+		return NewsQuery{}, fmt.Errorf("%w: category must be general, merger or company", ErrInvalidInput)
+	}
+	if len(symbols) > 0 {
+		q.Category = ""
+	}
+	if q.From, err = ParseDate(p.From, ""); err != nil {
+		return NewsQuery{}, err
+	}
+	if q.To, err = ParseDate(p.To, ""); err != nil {
+		return NewsQuery{}, err
+	}
+	if q.From != "" && q.To != "" && q.To < q.From {
+		return NewsQuery{}, fmt.Errorf("%w: to must not be before from", ErrInvalidInput)
+	}
+	if q.From != "" && q.From < AddDays(today, -30) {
+		return NewsQuery{}, fmt.Errorf("%w: news goes back 30 days at most", ErrInvalidInput)
+	}
+	if q.Page, err = boundedInt(p.Page, "page", 1, 1, 100); err != nil {
+		return NewsQuery{}, err
+	}
+	if q.Limit, err = boundedInt(p.Limit, "limit", NewsDefaultLimit, 1, NewsMaxLimit); err != nil {
+		return NewsQuery{}, err
+	}
+	return q, nil
+}
+
+func boundedInt(raw, name string, def, lo, hi int) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return def, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < lo || n > hi {
+		return 0, fmt.Errorf("%w: %s must be a whole number from %d to %d", ErrInvalidInput, name, lo, hi)
+	}
+	return n, nil
+}
+
+var articleIDPattern = regexp.MustCompile(`^[a-z]{2}-[0-9A-Za-z]{1,40}$`)
+
+// ParseArticleID validates a news article id such as "fh-143886409".
+func ParseArticleID(raw string) (string, error) {
+	if !articleIDPattern.MatchString(raw) {
+		return "", fmt.Errorf("%w: %q is not an article id", ErrInvalidInput, raw)
+	}
+	return raw, nil
+}

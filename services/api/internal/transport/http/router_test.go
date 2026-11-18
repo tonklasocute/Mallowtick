@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/tonklasocute/mallowtick/services/api/internal/market"
+	"github.com/tonklasocute/mallowtick/services/api/internal/research"
 )
 
 func init() { gin.SetMode(gin.TestMode) }
@@ -101,6 +102,47 @@ func (s *stubService) Sectors(context.Context) (market.SectorsResult, error) {
 	return market.SectorsResult{Sectors: []market.SectorPerformance{{Sector: "technology", Symbol: "XLK"}}}, s.err
 }
 
+func (s *stubService) Today() string { return "2026-11-18" }
+func (s *stubService) EarningsCalendar(_ context.Context, from, to string, syms []market.Symbol) (market.EarningsCalendarResult, error) {
+	s.lastBatch = syms
+	return market.EarningsCalendarResult{From: from, To: to, Events: []market.EarningsEvent{}}, s.err
+}
+func (s *stubService) SymbolEarnings(_ context.Context, sym market.Symbol) (market.SymbolEarningsResult, error) {
+	s.lastSymbol = sym
+	return market.SymbolEarningsResult{Symbol: sym}, s.err
+}
+func (s *stubService) EarningsDetail(_ context.Context, sym market.Symbol) (market.EarningsDetailResult, error) {
+	s.lastSymbol = sym
+	return market.EarningsDetailResult{Symbol: sym, Quarters: []market.EarningsQuarter{}}, s.err
+}
+
+func (s *stubService) News(_ context.Context, q market.NewsQuery) (market.NewsResult, error) {
+	s.lastBatch = q.Symbols
+	return market.NewsResult{Articles: []market.NewsArticle{}, Page: q.Page, Limit: q.Limit, Unavailable: []market.UnavailableSymbol{}}, s.err
+}
+func (s *stubService) Article(_ context.Context, id string) (market.NewsArticle, error) {
+	if id != "fh-1" {
+		return market.NewsArticle{}, market.ErrNotFound
+	}
+	return market.NewsArticle{ID: id}, s.err
+}
+
+// stubResearch records the symbols it was asked for.
+type stubResearch struct{ last []market.Symbol }
+
+func (r *stubResearch) Briefing(_ context.Context, syms []market.Symbol) (research.Briefing, error) {
+	r.last = syms
+	return research.Briefing{Insights: []research.Insight{}}, nil
+}
+func (r *stubResearch) Insights(_ context.Context, syms []market.Symbol) (research.InsightsResult, error) {
+	r.last = syms
+	return research.InsightsResult{Insights: []research.Insight{}}, nil
+}
+func (r *stubResearch) Compare(_ context.Context, syms []market.Symbol) (research.Comparison, error) {
+	r.last = syms
+	return research.Comparison{Items: []research.CompareItem{}}, nil
+}
+
 type envelope struct {
 	Data  json.RawMessage `json:"data"`
 	Error *errorBody      `json:"error"`
@@ -108,8 +150,13 @@ type envelope struct {
 
 func do(t *testing.T, svc MarketService, method, target string, header http.Header) (*httptest.ResponseRecorder, envelope) {
 	t.Helper()
+	return doWith(t, svc, nil, method, target, header)
+}
+
+func doWith(t *testing.T, svc MarketService, rs ResearchService, method, target string, header http.Header) (*httptest.ResponseRecorder, envelope) {
+	t.Helper()
 	h := NewRouter(Options{
-		Service: svc, Logger: slog.New(slog.DiscardHandler), CORSOrigins: []string{"http://localhost:3000"},
+		Service: svc, Research: rs, Logger: slog.New(slog.DiscardHandler), CORSOrigins: []string{"http://localhost:3000"},
 		RequestTimeout: time.Second, Now: func() time.Time { return time.Unix(0, 0) },
 	})
 	req := httptest.NewRequestWithContext(context.Background(), method, target, nil)

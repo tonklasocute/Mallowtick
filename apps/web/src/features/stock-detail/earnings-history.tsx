@@ -5,24 +5,19 @@ import { FileCheck2 } from "lucide-react";
 import { ApiErrorState } from "@/components/market/api-error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
-import { EMPTY, direction, formatCalendarDate, formatSignedPercent } from "@/lib/format";
+import {
+  formatAmountCompact,
+  formatEps,
+  hourLabel,
+  OUTCOME_LABELS,
+  REPORTING_CURRENCY_NOTE,
+} from "@/lib/earnings";
+import { direction, formatCalendarDate, formatSignedPercent } from "@/lib/format";
 import { isApiError } from "@/services/api/client";
-import { useEarningsHistory } from "@/services/api/queries";
-import type { EarningsSurprise } from "@/types/api";
+import { useEarningsDetail } from "@/services/api/queries";
+import type { EarningsQuarter, EarningsSurprise } from "@/types/api";
 
 import { CardHeading, DetailCard, SourceNote } from "./detail-ui";
-
-/**
- * EPS with up to four decimals: estimates are averages like -0.0765, and rounding them to
- * cents would show "-0.08 vs -0.08" next to a 4.6% miss.
- */
-function formatEps(v: number | null): string {
-  if (v === null || !Number.isFinite(v)) return EMPTY;
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
-  }).format(v);
-}
 
 // Compare in percent: direction() treats sub-cent changes as flat, but a 0.4-cent EPS beat is real.
 const outcome = (q: EarningsSurprise) => direction(q.surprisePercent);
@@ -153,11 +148,57 @@ function EpsDotPlot({ quarters }: { quarters: EarningsSurprise[] }) {
 }
 
 /**
- * Reported EPS against the analysts' estimate for the latest quarters. Renders nothing
- * when no vendor is configured (the company card says so) or the symbol has no reports.
+ * Revenue against its estimate for the one quarter the calendar still lists (the latest).
+ * The vendor has no revenue history, so older quarters show EPS only.
+ */
+function LatestRevenue({ quarter }: { quarter: EarningsQuarter }) {
+  if (quarter.revenueActual === null && quarter.revenueEstimate === null) return null;
+  const result = quarter.revenueResult;
+  return (
+    <div className="space-y-1 rounded-2xl bg-cream-deep px-3 py-2.5">
+      <p className="text-[12px] text-slate">
+        รายได้ Q{quarter.quarter} ปีงบ {quarter.year}
+        {quarter.reportDate && ` · ประกาศ ${formatCalendarDate(quarter.reportDate)}`}
+      </p>
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="tabular font-display text-base font-black text-ink">
+          {formatAmountCompact(quarter.revenueActual)}
+        </span>
+        <span className="tabular font-display text-[12px] font-semibold text-slate">
+          คาด {formatAmountCompact(quarter.revenueEstimate)}
+        </span>
+        {result && (
+          <span
+            className={cn(
+              "tabular rounded-full px-2 py-0.5 font-display text-[11px] font-black",
+              result === "beat"
+                ? "bg-up-soft text-up"
+                : result === "miss"
+                  ? "bg-down-soft text-down"
+                  : "bg-surface text-slate-strong",
+            )}
+          >
+            {result !== "inline" && quarter.revenueSurprisePercent !== null && (
+              <>
+                <span aria-hidden>{result === "beat" ? "▲ " : "▼ "}</span>
+                {formatSignedPercent(quarter.revenueSurprisePercent)}{" "}
+              </>
+            )}
+            {OUTCOME_LABELS[result]}
+          </span>
+        )}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Reported EPS against the analysts' estimate for the latest quarters, with the latest
+ * quarter's revenue and report dates where the calendar has them. Renders nothing when no
+ * vendor is configured (the company card says so) or the symbol has no reports.
  */
 export function EarningsHistory({ symbol }: { symbol: string }) {
-  const { data, error, isPending, refetch } = useEarningsHistory(symbol);
+  const { data, error, isPending, refetch } = useEarningsDetail(symbol);
 
   if (isPending) {
     return (
@@ -217,6 +258,8 @@ export function EarningsHistory({ symbol }: { symbol: string }) {
         </div>
       )}
 
+      {data.quarters[0] && <LatestRevenue quarter={data.quarters[0]} />}
+
       <EpsDotPlot quarters={chronological} />
       <div aria-hidden className="flex gap-3.5 text-[11.5px] text-slate">
         <span className="inline-flex items-center gap-1.5">
@@ -254,7 +297,9 @@ export function EarningsHistory({ symbol }: { symbol: string }) {
                     Q{q.quarter} {q.year}
                   </b>
                   <small className="text-[11px] font-light text-slate">
-                    สิ้นสุด {formatCalendarDate(q.period, "month")}
+                    {q.reportDate
+                      ? `ประกาศ ${formatCalendarDate(q.reportDate)} · ${hourLabel(q.hour)}`
+                      : `สิ้นสุด ${formatCalendarDate(q.period, "month")}`}
                   </small>
                 </th>
                 <td className="py-[11px] text-right">
@@ -288,7 +333,8 @@ export function EarningsHistory({ symbol }: { symbol: string }) {
         </tbody>
       </table>
       <SourceNote freshness={data.freshness}>
-        คาดการณ์คือค่าเฉลี่ยประมาณการของนักวิเคราะห์ ไตรมาสนับตามปีบัญชีของบริษัท
+        คาดการณ์คือค่าเฉลี่ยประมาณการของนักวิเคราะห์ ไตรมาสนับตามปีบัญชีของบริษัท ·{" "}
+        {REPORTING_CURRENCY_NOTE}
       </SourceNote>
     </DetailCard>
   );

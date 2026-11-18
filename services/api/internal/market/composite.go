@@ -3,6 +3,8 @@ package market
 import (
 	"context"
 	"time"
+
+	"github.com/tonklasocute/mallowtick/services/api/internal/resilience"
 )
 
 // DataKind names a kind of market data, so a deployment can take each kind
@@ -17,10 +19,17 @@ const (
 	KindEarnings     DataKind = "earnings"
 	KindFundamentals DataKind = "fundamentals"
 	KindFX           DataKind = "fx"
+	KindNews         DataKind = "news"
 )
 
 // DataKinds lists every kind in display order.
-var DataKinds = []DataKind{KindQuotes, KindSearch, KindCandles, KindStatus, KindEarnings, KindFundamentals, KindFX}
+var DataKinds = []DataKind{KindQuotes, KindSearch, KindCandles, KindStatus, KindEarnings, KindFundamentals, KindFX, KindNews}
+
+// VendorMonitor is implemented by adapters that track their calls' outcomes
+// (see package resilience), for /health.
+type VendorMonitor interface {
+	VendorStats() resilience.Stats
+}
 
 // MultiSource is implemented by providers that combine vendors. SourceFor
 // returns the vendor behind a kind of data, so freshness metadata names the
@@ -32,6 +41,10 @@ type MultiSource interface {
 // EarningsEvent is a scheduled earnings report.
 type EarningsEvent struct {
 	Symbol string `json:"symbol"`
+	// Name and Logo are filled in only when the API already knows them (no
+	// lookup per row); empty otherwise.
+	Name string `json:"name,omitempty"`
+	Logo string `json:"logo,omitempty"`
 	// Date is the report date (YYYY-MM-DD) in US market time.
 	Date string `json:"date"`
 	// Hour is "bmo" (before market open), "amc" (after market close), "dmh"
@@ -41,6 +54,10 @@ type EarningsEvent struct {
 	Year            int      `json:"year,omitempty"`
 	EPSEstimate     *float64 `json:"epsEstimate"`
 	RevenueEstimate *float64 `json:"revenueEstimate"`
+	// EPSActual and RevenueActual are nil until the company has reported (and
+	// for vendors whose calendar lists upcoming reports only).
+	EPSActual     *float64 `json:"epsActual"`
+	RevenueActual *float64 `json:"revenueActual"`
 }
 
 // Fundamentals describes a listed company and how the market values it. Every
@@ -179,11 +196,13 @@ type Composite struct {
 }
 
 var (
-	_ Provider             = Composite{}
-	_ MultiSource          = Composite{}
-	_ EarningsProvider     = Composite{}
-	_ FundamentalsProvider = Composite{}
-	_ FXProvider           = Composite{}
+	_ EarningsCalendarProvider = Composite{}
+	_ NewsProvider             = Composite{}
+	_ Provider                 = Composite{}
+	_ MultiSource              = Composite{}
+	_ EarningsProvider         = Composite{}
+	_ FundamentalsProvider     = Composite{}
+	_ FXProvider               = Composite{}
 )
 
 func (c Composite) Name() string     { return c.QuoteSource.Name() + "+" + c.BarSource.Name() }
@@ -227,6 +246,38 @@ func (c Composite) NextEarnings(ctx context.Context, symbol Symbol, from time.Ti
 func (c Composite) EarningsHistory(ctx context.Context, symbol Symbol) ([]EarningsSurprise, error) {
 	if e, ok := c.QuoteSource.(EarningsProvider); ok && c.QuoteSource.Configured() {
 		return e.EarningsHistory(ctx, symbol)
+	}
+	return nil, ErrNotConfigured
+}
+
+// EarningsCalendar implements EarningsCalendarProvider through the quotes vendor.
+func (c Composite) EarningsCalendar(ctx context.Context, from, to string) (CalendarPage, error) {
+	if e, ok := c.QuoteSource.(EarningsCalendarProvider); ok && c.QuoteSource.Configured() {
+		return e.EarningsCalendar(ctx, from, to)
+	}
+	return CalendarPage{}, ErrNotConfigured
+}
+
+// SymbolEarnings implements EarningsCalendarProvider through the quotes vendor.
+func (c Composite) SymbolEarnings(ctx context.Context, symbol Symbol, from, to string) ([]EarningsEvent, error) {
+	if e, ok := c.QuoteSource.(EarningsCalendarProvider); ok && c.QuoteSource.Configured() {
+		return e.SymbolEarnings(ctx, symbol, from, to)
+	}
+	return nil, ErrNotConfigured
+}
+
+// MarketNews implements NewsProvider through the quotes vendor.
+func (c Composite) MarketNews(ctx context.Context, category string) ([]NewsArticle, error) {
+	if n, ok := c.QuoteSource.(NewsProvider); ok && c.QuoteSource.Configured() {
+		return n.MarketNews(ctx, category)
+	}
+	return nil, ErrNotConfigured
+}
+
+// CompanyNews implements NewsProvider through the quotes vendor.
+func (c Composite) CompanyNews(ctx context.Context, symbol Symbol, from, to string) ([]NewsArticle, error) {
+	if n, ok := c.QuoteSource.(NewsProvider); ok && c.QuoteSource.Configured() {
+		return n.CompanyNews(ctx, symbol, from, to)
 	}
 	return nil, ErrNotConfigured
 }

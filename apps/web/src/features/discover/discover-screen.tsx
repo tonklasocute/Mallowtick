@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Logo } from "@/components/brand/logo";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
+import { AlertBell } from "@/features/alerts/alert-bell";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 
 import { DiscoverHero } from "./discover-hero";
@@ -12,6 +13,7 @@ import { MarketOverview } from "./market-overview";
 import { SearchBox } from "./search-box";
 import { SearchResults } from "./search-results";
 import { SectorRotation } from "./sector-rotation";
+import { DiscoverTools } from "./tools";
 
 export function DiscoverScreen() {
   const [query, setQuery] = useState("");
@@ -32,6 +34,7 @@ export function DiscoverScreen() {
             </h1>
           </>
         }
+        trailing={<AlertBell />}
       />
       <main className="pb-nav space-y-4 px-4 lg:space-y-6">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-center lg:gap-6">
@@ -49,6 +52,7 @@ export function DiscoverScreen() {
           </div>
         ) : (
           <>
+            <DiscoverTools />
             <MarketOverview />
             <SectorRotation />
           </>

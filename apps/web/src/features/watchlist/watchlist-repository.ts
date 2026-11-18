@@ -1,3 +1,5 @@
+import { backUpCorrupt, readVersioned, writeVersioned } from "@/lib/versioned-storage";
+
 import { sanitizeSymbols } from "./watchlist-model";
 
 /**
@@ -14,6 +16,7 @@ export interface WatchlistRepository {
 }
 
 export const STORAGE_KEY = "mallowtick.watchlist.v1";
+const VERSION = 1;
 
 interface StoredWatchlist {
   version: 1;
@@ -29,18 +32,23 @@ export class LocalStorageWatchlistRepository implements WatchlistRepository {
 
   async list(): Promise<string[]> {
     try {
-      const raw = this.storage.getItem(STORAGE_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw) as Partial<StoredWatchlist>;
-      return sanitizeSymbols(parsed?.symbols);
+      const stored = readVersioned(this.storage, STORAGE_KEY, VERSION);
+      if (stored.status === "empty") return [];
+      if (stored.status === "corrupt") {
+        backUpCorrupt(this.storage, STORAGE_KEY, stored.raw);
+        return [];
+      }
+      // A newer build's list is shown as far as this build understands it; save refuses it.
+      return sanitizeSymbols(stored.value.symbols);
     } catch {
-      return []; // corrupted or inaccessible storage: start empty rather than crash
+      return []; // inaccessible storage: start empty rather than crash
     }
   }
 
+  /** Throws NewerDataError rather than overwrite a list saved by a newer version. */
   async save(symbols: string[]): Promise<void> {
-    const value: StoredWatchlist = { version: 1, symbols: sanitizeSymbols(symbols) };
-    this.storage.setItem(STORAGE_KEY, JSON.stringify(value));
+    const value: StoredWatchlist = { version: VERSION, symbols: sanitizeSymbols(symbols) };
+    writeVersioned(this.storage, STORAGE_KEY, VERSION, value);
   }
 
   subscribe(onChange: () => void): () => void {

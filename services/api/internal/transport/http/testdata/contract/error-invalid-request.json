@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "invalid_request",
+    "message": "search query is required",
+    "requestId": "request-id"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "data": {
+    "symbol": "AAPL",
+    "quarters": [
+      {
+        "period": "2026-09-30",
+        "year": 2026,
+        "quarter": 4,
+        "actual": 2.1,
+        "estimate": 2.0263,
+        "surprise": 0.0737,
+        "surprisePercent": 3.637,
+        "reportDate": "2026-11-02",
+        "hour": "amc",
+        "epsResult": "beat",
+        "revenueActual": 114477000000,
+        "revenueEstimate": 115660000000,
+        "revenueSurprisePercent": -1.02,
+        "revenueResult": "miss"
+      }
+    ],
+    "epsRecord": {
+      "compared": 1,
+      "beats": 1,
+      "misses": 0,
+      "inline": 0
+    },
+    "freshness": {
+      "provider": "finnhub",
+      "latency": "delayed",
+      "asOf": "2026-11-17T21:00:00Z",
+      "fetchedAt": "2026-11-17T21:01:00Z",
+      "stale": false
+    }
+  }
+}

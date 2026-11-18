@@ -12,12 +12,16 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/tonklasocute/mallowtick/services/api/internal/cache"
+	"github.com/tonklasocute/mallowtick/services/api/internal/resilience"
 	"github.com/tonklasocute/mallowtick/services/api/internal/supportresistance"
 )
 
 // ServiceConfig configures caching and the curated symbol lists.
 type ServiceConfig struct {
-	Latency Latency
+	// Latency is the declared latency of vendors without their own entry in
+	// VendorLatency (keyed by Provider.Name).
+	Latency       Latency
+	VendorLatency map[string]Latency
 	// QuoteTTL applies while the market is open or its state is unknown;
 	// QuoteTTLClosed applies to quotes reporting a closed market.
 	QuoteTTL       time.Duration
@@ -74,6 +78,15 @@ type Service struct {
 	dayChanges *cache.TTL[Quote]
 	returns    *cache.TTL[PriceReturns]
 	fx         *cache.TTL[ExchangeRate]
+	// calendar holds the whole market's earnings calendar per week (keyed by
+	// its Monday); symbolEarnings one symbol's latest and next report.
+	calendar       *cache.TTL[calendarWeek]
+	symbolEarnings *cache.TTL[[]EarningsEvent]
+	// News: market news per category, company news per symbol, and every
+	// article served, by id.
+	marketNews       *cache.TTL[[]NewsArticle]
+	companyNewsCache *cache.TTL[[]NewsArticle]
+	articles         *cache.TTL[NewsArticle]
 }
 
 // NewService wires a provider with caches.
@@ -86,21 +99,26 @@ func NewService(p Provider, cfg ServiceConfig) *Service {
 	}
 	retain := cfg.StaleRetention
 	return &Service{
-		provider:     p,
-		cfg:          cfg,
-		log:          cfg.Logger,
-		quotes:       cache.New[Quote](cfg.QuoteTTL, retain, 2000, cfg.Now),
-		candles:      cache.New[CandleSeries](time.Minute, retain, 500, cfg.Now),
-		searches:     cache.New[[]Instrument](searchTTL, retain, 1000, cfg.Now),
-		instruments:  cache.New[Instrument](instrumentTTL, instrumentTTL, 2000, cfg.Now),
-		status:       cache.New[MarketStatus](statusTTL, retain, 1, cfg.Now),
-		earnings:     cache.New[*EarningsEvent](earningsTTL, retain, 1000, cfg.Now),
-		surprises:    cache.New[[]EarningsSurprise](earningsTTL, retain, 1000, cfg.Now),
-		fundamentals: cache.New[Fundamentals](fundamentalsTTL, retain, 1000, cfg.Now),
-		ratings:      cache.New[[]RecommendationTrend](ratingsTTL, retain, 1000, cfg.Now),
-		dayChanges:   cache.New[Quote](cfg.QuoteTTL, retain, 100, cfg.Now),
-		returns:      cache.New[PriceReturns](fundamentalsTTL, retain, 100, cfg.Now),
-		fx:           cache.New[ExchangeRate](fxTTL, retain, 10, cfg.Now),
+		provider:         p,
+		cfg:              cfg,
+		log:              cfg.Logger,
+		quotes:           cache.New[Quote](cfg.QuoteTTL, retain, 2000, cfg.Now),
+		candles:          cache.New[CandleSeries](time.Minute, retain, 500, cfg.Now),
+		searches:         cache.New[[]Instrument](searchTTL, retain, 1000, cfg.Now),
+		instruments:      cache.New[Instrument](instrumentTTL, instrumentTTL, 2000, cfg.Now),
+		status:           cache.New[MarketStatus](statusTTL, retain, 1, cfg.Now),
+		earnings:         cache.New[*EarningsEvent](earningsTTL, retain, 1000, cfg.Now),
+		surprises:        cache.New[[]EarningsSurprise](earningsTTL, retain, 1000, cfg.Now),
+		fundamentals:     cache.New[Fundamentals](fundamentalsTTL, retain, 1000, cfg.Now),
+		ratings:          cache.New[[]RecommendationTrend](ratingsTTL, retain, 1000, cfg.Now),
+		dayChanges:       cache.New[Quote](cfg.QuoteTTL, retain, 100, cfg.Now),
+		returns:          cache.New[PriceReturns](fundamentalsTTL, retain, 100, cfg.Now),
+		fx:               cache.New[ExchangeRate](fxTTL, retain, 10, cfg.Now),
+		calendar:         cache.New[calendarWeek](calendarCurrentTTL, retain, 60, cfg.Now),
+		symbolEarnings:   cache.New[[]EarningsEvent](earningsTTL, retain, 1000, cfg.Now),
+		marketNews:       cache.New[[]NewsArticle](marketNewsTTL, retain, 10, cfg.Now),
+		companyNewsCache: cache.New[[]NewsArticle](companyNewsTTL, retain, 300, cfg.Now),
+		articles:         cache.New[NewsArticle](articleTTL, articleTTL, 5000, cfg.Now),
 	}
 }
 
@@ -116,6 +134,8 @@ func (s *Service) source(kind DataKind) Provider {
 type SourceInfo struct {
 	Name       string `json:"name"`
 	Configured bool   `json:"configured"`
+	// Latency is the operator's declaration for this vendor's plan.
+	Latency Latency `json:"latency"`
 }
 
 // ProviderInfo describes the configured provider and, per kind of data, the
@@ -125,6 +145,10 @@ type ProviderInfo struct {
 	Configured bool                    `json:"configured"`
 	Latency    Latency                 `json:"latency"`
 	Sources    map[DataKind]SourceInfo `json:"sources"`
+	// Vendors reports each vendor's recent call outcomes and whether the API has
+	// stopped calling it after repeated failures. Absent for vendors that don't
+	// track them (an unconfigured one).
+	Vendors map[string]resilience.Stats `json:"vendors,omitempty"`
 }
 
 func (s *Service) ProviderInfo() ProviderInfo {
@@ -137,7 +161,13 @@ func (s *Service) ProviderInfo() ProviderInfo {
 		if !serves(p, kind) {
 			continue // no vendor publishes this kind of data in this deployment
 		}
-		info.Sources[kind] = SourceInfo{Name: p.Name(), Configured: p.Configured()}
+		info.Sources[kind] = SourceInfo{Name: p.Name(), Configured: p.Configured(), Latency: s.latencyOf(p.Name())}
+		if m, ok := p.(VendorMonitor); ok {
+			if info.Vendors == nil {
+				info.Vendors = make(map[string]resilience.Stats)
+			}
+			info.Vendors[p.Name()] = m.VendorStats()
+		}
 	}
 	return info
 }
@@ -154,6 +184,9 @@ func serves(p Provider, kind DataKind) bool {
 		return ok
 	case KindFX:
 		_, ok := p.(FXProvider)
+		return ok
+	case KindNews:
+		_, ok := p.(NewsProvider)
 		return ok
 	}
 	return true
@@ -230,7 +263,16 @@ type StatusResult struct {
 const levelsDisclaimer = "แนวรับ-แนวต้านคำนวณโดย Mallowtick จากแท่งเทียนย้อนหลัง เป็นค่าประมาณเชิงวิเคราะห์ ไม่ใช่ข้อมูลจากผู้ให้บริการ และไม่ได้คาดการณ์ราคาในอนาคต"
 
 func (s *Service) freshness(kind DataKind, asOf *time.Time, fetchedAt time.Time, stale bool) Freshness {
-	return Freshness{Provider: s.source(kind).Name(), Latency: s.cfg.Latency, AsOf: asOf, FetchedAt: fetchedAt.UTC(), Stale: stale}
+	name := s.source(kind).Name()
+	return Freshness{Provider: name, Latency: s.latencyOf(name), AsOf: asOf, FetchedAt: fetchedAt.UTC(), Stale: stale}
+}
+
+// latencyOf is the latency the operator declared for vendor's plan.
+func (s *Service) latencyOf(vendor string) Latency {
+	if l, ok := s.cfg.VendorLatency[vendor]; ok {
+		return l
+	}
+	return s.cfg.Latency
 }
 
 // do runs fn once per key across concurrent callers. The provider call is
@@ -582,6 +624,20 @@ type EarningsResult struct {
 // NextEarnings returns the next earnings report. It fails with
 // ErrNotConfigured when no configured vendor publishes an earnings calendar.
 func (s *Service) NextEarnings(ctx context.Context, symbol Symbol) (EarningsResult, error) {
+	// A vendor with a full calendar answers from the same cached call as
+	// /earnings/{symbol}, so Stock Detail spends one call on both.
+	if cp, ok := s.source(KindEarnings).(EarningsCalendarProvider); ok {
+		e, stale, err := s.symbolEvents(ctx, cp, symbol)
+		if err != nil {
+			return EarningsResult{}, err
+		}
+		next := nextFromEvents(e.Value, s.Today())
+		if next != nil {
+			n := s.withKnownName(*next)
+			next = &n
+		}
+		return EarningsResult{Symbol: symbol, Next: next, Freshness: s.freshness(KindEarnings, nil, e.StoredAt, stale)}, nil
+	}
 	ep, ok := s.source(KindEarnings).(EarningsProvider)
 	if !ok {
 		return EarningsResult{}, ErrNotConfigured
@@ -814,6 +870,10 @@ func (s *Service) Candles(ctx context.Context, symbol Symbol, rng Range) (Candle
 		}
 		if name := s.source(KindQuotes).Name(); name != fresh.Provider {
 			fresh.Provider += "+" + name
+			// Two plans: only a latency both declare describes the response.
+			if s.latencyOf(name) != fresh.Latency {
+				fresh.Latency = LatencyUnknown
+			}
 		}
 	}
 	return CandlesResult{CandleSeries: series, Warmup: warmup, Range: rng, Freshness: fresh}, nil
@@ -931,4 +991,15 @@ func ErrorCode(err error) string {
 	default:
 		return "internal_error"
 	}
+}
+
+// CachedDaily returns symbol's cached daily series as the vendor sent it
+// (without the session's bar from the quote), never fetching. ok is false
+// when nothing is cached.
+func (s *Service) CachedDaily(symbol Symbol) (CandleSeries, Freshness, bool) {
+	e, state := s.candles.Get(dailyKey(symbol))
+	if state == cache.Miss {
+		return CandleSeries{}, Freshness{}, false
+	}
+	return e.Value, s.freshness(KindCandles, nil, e.StoredAt, state == cache.Stale), true
 }

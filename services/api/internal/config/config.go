@@ -56,6 +56,9 @@ type Finnhub struct {
 	CallsPerMinute int
 	MaxWait        time.Duration
 	Timeout        time.Duration
+	// Latency is what the operator's Finnhub plan delivers (FINNHUB_LATENCY,
+	// default MARKET_DATA_LATENCY).
+	Latency market.Latency
 }
 
 // TwelveData configures the Twelve Data adapter. An empty APIKey leaves the
@@ -66,6 +69,9 @@ type TwelveData struct {
 	CreditsPerMinute int
 	MaxWait          time.Duration
 	Timeout          time.Duration
+	// Latency is what the operator's Twelve Data plan delivers
+	// (TWELVEDATA_LATENCY, default MARKET_DATA_LATENCY).
+	Latency market.Latency
 }
 
 // Market configures caching, freshness labelling, and curated symbol lists.
@@ -107,6 +113,19 @@ func (l *loader) duration(key string, def time.Duration) time.Duration {
 		return def
 	}
 	return d
+}
+
+func (l *loader) latency(key string, def market.Latency) market.Latency {
+	raw := l.str(key, "")
+	if raw == "" {
+		return def
+	}
+	lat, ok := market.ParseLatency(raw)
+	if !ok {
+		l.errs = append(l.errs, fmt.Errorf("%s: must be realtime, delayed, eod or unknown", key))
+		return def
+	}
+	return lat
 }
 
 func (l *loader) positiveInt(key string, def int) int {
@@ -237,6 +256,10 @@ func Load(lookup LookupFunc) (Config, error) {
 		l.errs = append(l.errs, errors.New("MARKET_DATA_LATENCY: must be realtime, delayed, eod or unknown"))
 	}
 	cfg.Market.Latency = latency
+	// Each vendor's data is labelled with its own plan's latency, so one vendor's
+	// entitlement is never shown on the other's data.
+	cfg.TwelveData.Latency = l.latency("TWELVEDATA_LATENCY", latency)
+	cfg.Finnhub.Latency = l.latency("FINNHUB_LATENCY", latency)
 	if cfg.Market.StaleRetention < cfg.Market.QuoteTTLClosed {
 		l.errs = append(l.errs, errors.New("STALE_RETENTION must be at least QUOTE_CACHE_TTL_CLOSED"))
 	}

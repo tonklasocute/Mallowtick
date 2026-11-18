@@ -21,6 +21,7 @@ import (
 	"github.com/tonklasocute/mallowtick/services/api/internal/market"
 	"github.com/tonklasocute/mallowtick/services/api/internal/market/finnhub"
 	"github.com/tonklasocute/mallowtick/services/api/internal/market/twelvedata"
+	"github.com/tonklasocute/mallowtick/services/api/internal/research"
 	"github.com/tonklasocute/mallowtick/services/api/internal/supportresistance"
 	httptransport "github.com/tonklasocute/mallowtick/services/api/internal/transport/http"
 )
@@ -51,7 +52,11 @@ func run() error {
 		return err
 	}
 	svc := market.NewService(provider, market.ServiceConfig{
-		Latency:         cfg.Market.Latency,
+		Latency: cfg.Market.Latency,
+		VendorLatency: map[string]market.Latency{
+			twelvedata.ProviderName: cfg.TwelveData.Latency,
+			finnhub.ProviderName:    cfg.Finnhub.Latency,
+		},
 		QuoteTTL:        cfg.Market.QuoteTTL,
 		QuoteTTLClosed:  cfg.Market.QuoteTTLClosed,
 		StaleRetention:  cfg.Market.StaleRetention,
@@ -86,7 +91,8 @@ func run() error {
 	srv := &http.Server{
 		Addr: cfg.Addr,
 		Handler: httptransport.NewRouter(httptransport.Options{
-			Service: svc, Logger: log, CORSOrigins: cfg.CORSOrigins, RequestTimeout: cfg.RequestTimeout,
+			Research: research.NewService(svc, nil),
+			Service:  svc, Logger: log, CORSOrigins: cfg.CORSOrigins, RequestTimeout: cfg.RequestTimeout,
 			Limiter: newClientLimiter(cfg.Clients), TrustedProxies: cfg.Clients.TrustedProxies,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
