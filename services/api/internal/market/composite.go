@@ -17,10 +17,11 @@ const (
 	KindEarnings     DataKind = "earnings"
 	KindFundamentals DataKind = "fundamentals"
 	KindFX           DataKind = "fx"
+	KindNews         DataKind = "news"
 )
 
 // DataKinds lists every kind in display order.
-var DataKinds = []DataKind{KindQuotes, KindSearch, KindCandles, KindStatus, KindEarnings, KindFundamentals, KindFX}
+var DataKinds = []DataKind{KindQuotes, KindSearch, KindCandles, KindStatus, KindEarnings, KindFundamentals, KindFX, KindNews}
 
 // MultiSource is implemented by providers that combine vendors. SourceFor
 // returns the vendor behind a kind of data, so freshness metadata names the
@@ -166,12 +167,12 @@ type PerformanceProvider interface {
 	PriceReturns(ctx context.Context, symbol Symbol) (PriceReturns, error)
 }
 
-// Composite takes quotes, search, earnings and fundamentals from one vendor and candles and
+// Composite takes quotes, search, earnings, fundamentals and news from one vendor and candles and
 // market status from another. It is used when a second vendor's free plan
 // has a far larger request allowance but no historical bars.
 type Composite struct {
 	// QuoteSource serves quotes, search and, when it implements the matching
-	// interfaces, earnings and fundamentals.
+	// interfaces, earnings, fundamentals and company news.
 	QuoteSource Provider
 	// BarSource serves candles, market status and, when it implements
 	// FXProvider, exchange rates.
@@ -184,6 +185,7 @@ var (
 	_ EarningsProvider     = Composite{}
 	_ FundamentalsProvider = Composite{}
 	_ FXProvider           = Composite{}
+	_ NewsProvider         = Composite{}
 )
 
 func (c Composite) Name() string     { return c.QuoteSource.Name() + "+" + c.BarSource.Name() }
@@ -243,6 +245,14 @@ func (c Composite) Fundamentals(ctx context.Context, symbol Symbol) (Fundamental
 func (c Composite) Recommendations(ctx context.Context, symbol Symbol) ([]RecommendationTrend, error) {
 	if f, ok := c.QuoteSource.(FundamentalsProvider); ok && c.QuoteSource.Configured() {
 		return f.Recommendations(ctx, symbol)
+	}
+	return nil, ErrNotConfigured
+}
+
+// CompanyNews implements NewsProvider through the quotes vendor.
+func (c Composite) CompanyNews(ctx context.Context, symbol Symbol, from, to time.Time, limit int) ([]NewsArticle, error) {
+	if n, ok := c.QuoteSource.(NewsProvider); ok && c.QuoteSource.Configured() {
+		return n.CompanyNews(ctx, symbol, from, to, limit)
 	}
 	return nil, ErrNotConfigured
 }

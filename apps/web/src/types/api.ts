@@ -175,7 +175,8 @@ export interface MarketStatus {
 }
 
 /** Kinds of market data; each may come from a different vendor. */
-export type DataKind = "quotes" | "search" | "candles" | "status" | "earnings" | "fundamentals";
+export type DataKind =
+  "quotes" | "search" | "candles" | "status" | "earnings" | "fundamentals" | "fx" | "news";
 
 export interface Health {
   status: string;
@@ -296,6 +297,26 @@ export interface Recommendations {
   symbol: string;
   /** Newest first; empty for ETFs. */
   trends: RecommendationTrend[];
+  freshness: Freshness;
+}
+
+/** One news story as the vendor sent it (Finnhub: English). */
+export interface NewsArticle {
+  headline: string;
+  /** The vendor's teaser, shortened by the API; "" when there is none. */
+  summary: string;
+  /** Publisher as the vendor names it, e.g. "Yahoo"; may be "". */
+  source: string;
+  /** https link to the article, often through the vendor's redirect. */
+  url: string;
+  /** RFC 3339. */
+  publishedAt: string;
+}
+
+export interface NewsResult {
+  symbol: string;
+  /** The past week's latest articles, newest first, at most 10; empty when there are none. */
+  articles: NewsArticle[];
   freshness: Freshness;
 }
 

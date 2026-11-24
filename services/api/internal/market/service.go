@@ -74,6 +74,7 @@ type Service struct {
 	dayChanges *cache.TTL[Quote]
 	returns    *cache.TTL[PriceReturns]
 	fx         *cache.TTL[ExchangeRate]
+	news       *cache.TTL[[]NewsArticle]
 }
 
 // NewService wires a provider with caches.
@@ -101,6 +102,7 @@ func NewService(p Provider, cfg ServiceConfig) *Service {
 		dayChanges:   cache.New[Quote](cfg.QuoteTTL, retain, 100, cfg.Now),
 		returns:      cache.New[PriceReturns](fundamentalsTTL, retain, 100, cfg.Now),
 		fx:           cache.New[ExchangeRate](fxTTL, retain, 10, cfg.Now),
+		news:         cache.New[[]NewsArticle](newsTTL, retain, 500, cfg.Now),
 	}
 }
 
@@ -142,10 +144,13 @@ func (s *Service) ProviderInfo() ProviderInfo {
 	return info
 }
 
-// serves reports whether p can supply kind; earnings and fundamentals need an
-// optional interface that not every vendor implements.
+// serves reports whether p can supply kind; earnings, fundamentals, exchange
+// rates and news need an optional interface that not every vendor implements.
 func serves(p Provider, kind DataKind) bool {
 	switch kind {
+	case KindNews:
+		_, ok := p.(NewsProvider)
+		return ok
 	case KindEarnings:
 		_, ok := p.(EarningsProvider)
 		return ok

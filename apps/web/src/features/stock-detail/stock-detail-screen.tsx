@@ -18,6 +18,7 @@ import type { ChartRange } from "@/types/api";
 import { AnalystRatings } from "./analyst-ratings";
 import { ChartPanel } from "./chart-panel";
 import { CompanyFundamentals } from "./company-fundamentals";
+import { CompanyNews } from "./company-news";
 import { EarningsHistory } from "./earnings-history";
 import { KeyLevels } from "./key-levels";
 import { PriceHeader } from "./price-header";
@@ -98,6 +99,7 @@ export function StockDetailScreen({ symbol }: { symbol: string }) {
         <CompanyFundamentals symbol={symbol} />
         <EarningsHistory symbol={symbol} />
         <AnalystRatings symbol={symbol} />
+        <CompanyNews symbol={symbol} />
         <div className="flex items-center gap-3 rounded-[20px] border-[1.5px] border-dashed border-line-strong p-3.5 text-[11.5px] leading-[1.7] font-light text-slate">
           <Mascot size={44} />
           <p>

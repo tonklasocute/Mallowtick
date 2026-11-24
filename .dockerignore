@@ -1,0 +1,35 @@
+# Build context for both images: docker-compose.yml builds them from the repository root.
+
+# Secrets never go into a build. The API reads services/api/.env at run time (env_file).
+**/.env
+**/.env.*
+!**/.env.example
+
+# Dependencies, build output and caches: the images install and build their own.
+**/node_modules
+**/.next
+apps/web/out
+apps/web/next-env.d.ts
+services/api/bin
+**/.cache
+**/*.tsbuildinfo
+
+# Tests and their output
+apps/web/tests
+**/coverage
+**/test-results
+**/playwright-report
+**/*.log
+
+# Repository, tooling and agent worktrees
+.git
+.github
+.claude
+**/.DS_Store
+
+# Not used by any image
+docs
+deploy
+docker-compose*.yml
+compose*.yml
+README.md

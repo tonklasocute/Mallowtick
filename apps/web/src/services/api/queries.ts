@@ -216,6 +216,21 @@ export function useRecommendations(symbol: string) {
   });
 }
 
+/**
+ * The past week's headlines; the server caches them for 30 minutes (one Finnhub call per
+ * symbol). Pass `enabled` once the card is near the screen.
+ */
+export function useNews(symbol: string, enabled = true) {
+  return useQuery({
+    queryKey: ["news", symbol] as const,
+    queryFn: ({ signal }) => endpoints.news(symbol, signal),
+    enabled,
+    staleTime: 15 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
 export function useLevels(symbol: string, range: ChartRange) {
   return useQuery({
     queryKey: queryKeys.levels(symbol, range),
@@ -254,7 +269,8 @@ export function useSparkline(symbol: string, enabled = true) {
 const DAILY_SPARKLINE_MS = 30 * 60_000;
 
 /**
- * One month of daily points for watchlist rows, without warm-up bars. The server serves
+ * One month of daily points for list sparklines (watchlist and popular rows, benchmark
+ * tiles), without warm-up bars. The server serves
  * 1M from the daily series it keeps per symbol, so a row costs no extra provider credit
  * once that series is cached. Lists pass `enabled` only for visible rows, and entries are
  * kept while the list is off screen too.

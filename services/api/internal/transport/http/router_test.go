@@ -88,6 +88,16 @@ func (s *stubService) Recommendations(_ context.Context, sym market.Symbol) (mar
 	s.lastSymbol = sym
 	return market.RecommendationsResult{Symbol: sym, Trends: []market.RecommendationTrend{{Period: "2026-10-01", Buy: 16}}}, s.err
 }
+func (s *stubService) News(_ context.Context, sym market.Symbol) (market.NewsResult, error) {
+	s.lastSymbol = sym
+	if s.err != nil {
+		return market.NewsResult{}, s.err
+	}
+	return market.NewsResult{Symbol: sym, Articles: []market.NewsArticle{{
+		Headline: "Apple unveils new chips", Source: "Yahoo", URL: "https://finnhub.io/api/news?id=abc",
+		PublishedAt: time.Date(2026, 11, 6, 21, 0, 0, 0, time.UTC),
+	}}}, nil
+}
 func (s *stubService) MarketStatus(context.Context) (market.StatusResult, error) {
 	return market.StatusResult{MarketStatus: market.MarketStatus{Exchange: "XNYS", IsOpen: true}}, s.err
 }
@@ -148,6 +158,7 @@ func TestSuccessfulRequests(t *testing.T) {
 		{"/api/v1/stocks/aapl/fundamentals", `"industry":"Technology"`},
 		{"/api/v1/stocks/aapl/earnings/history", `"period":"2026-06-30"`},
 		{"/api/v1/stocks/aapl/recommendations", `"buy":16`},
+		{"/api/v1/stocks/aapl/news", `"publishedAt":"2026-11-06T21:00:00Z"`},
 	}
 	for _, tc := range cases {
 		rec, env := do(t, svc, http.MethodGet, tc.target, nil)
@@ -214,6 +225,28 @@ func TestServiceErrorMapping(t *testing.T) {
 	rec, _ := do(t, &stubService{err: market.ErrRateLimited}, http.MethodGet, "/api/v1/stocks/AAPL/quote", nil)
 	if rec.Header().Get("Retry-After") == "" {
 		t.Error("rate-limited responses should set Retry-After")
+	}
+}
+
+func TestNewsRoute(t *testing.T) {
+	svc := &stubService{}
+	rec, env := do(t, svc, http.MethodGet, "/api/v1/stocks/rklb/news", nil)
+	if rec.Code != http.StatusOK || svc.lastSymbol != "RKLB" {
+		t.Fatalf("got %d for %q: %s", rec.Code, svc.lastSymbol, rec.Body)
+	}
+	var got market.NewsResult
+	if err := json.Unmarshal(env.Data, &got); err != nil || len(got.Articles) != 1 ||
+		got.Articles[0].URL != "https://finnhub.io/api/news?id=abc" || got.Articles[0].Source != "Yahoo" {
+		t.Fatalf("unexpected body %s (%v)", env.Data, err)
+	}
+
+	rec, env = do(t, &stubService{err: market.ErrNotConfigured}, http.MethodGet, "/api/v1/stocks/RKLB/news", nil)
+	if rec.Code != http.StatusServiceUnavailable || env.Error == nil || env.Error.Code != "provider_not_configured" {
+		t.Fatalf("without a news vendor: got %d %s", rec.Code, rec.Body)
+	}
+	rec, env = do(t, &stubService{}, http.MethodGet, "/api/v1/stocks/AAPL%3B/news", nil)
+	if rec.Code != http.StatusBadRequest || env.Error == nil || env.Error.Code != "invalid_request" {
+		t.Fatalf("bad symbol: got %d %s", rec.Code, rec.Body)
 	}
 }
 

@@ -8,6 +8,7 @@ import {
   parseChartPrefs,
 } from "@/features/stock-detail/chart-prefs";
 import { ChartPanel } from "@/features/stock-detail/chart-panel";
+import { ApiError } from "@/services/api/client";
 import type { useCandles } from "@/services/api/queries";
 import type { Candle, CandleSeries } from "@/types/api";
 
@@ -120,6 +121,24 @@ describe("ChartPanel", () => {
     renderPanel(series([10, 11, 12]));
     expect(screen.getByText(/ข้อมูลย้อนหลังไม่พอคำนวณ EMA20, EMA50, EMA100, EMA200/)).toBeVisible();
     expect(screen.getByText("EMA200").nextSibling).toHaveTextContent("—");
+  });
+
+  it("says the quota is used up when the candles had to wait too long for credits", async () => {
+    // The API gives up after TWELVEDATA_MAX_WAIT (3s) and answers rate_limited.
+    const refetch = vi.fn();
+    const query = {
+      data: undefined,
+      error: new ApiError("rate_limited", "credits", 429, 60),
+      isPending: false,
+      isPlaceholderData: false,
+      isFetching: false,
+      refetch,
+    } as unknown as ReturnType<typeof useCandles>;
+    render(<ChartPanel range="1m" onRangeChange={vi.fn()} candles={query} levels={[]} />);
+    expect(screen.getByText("ขอพักหายใจแป๊บนึง")).toBeVisible();
+    expect(screen.getByText(/ใช้โควตาข้อมูลตลาดครบแล้วในตอนนี้/)).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "ลองใหม่" }));
+    expect(refetch).toHaveBeenCalledOnce();
   });
 
   it("remembers layer toggles on this device", async () => {

@@ -9,6 +9,7 @@ import type {
   LevelsResponse,
   MarketOverview,
   MarketStatus,
+  NewsResult,
   Quote,
   QuoteBatch,
   Recommendations,
@@ -48,6 +49,8 @@ export const endpoints = {
     apiGet<Recommendations>(`/stocks/${enc(symbol)}/recommendations`, undefined, { signal }),
   fundamentals: (symbol: string, signal?: Signal) =>
     apiGet<Fundamentals>(`/stocks/${enc(symbol)}/fundamentals`, undefined, { signal }),
+  news: (symbol: string, signal?: Signal) =>
+    apiGet<NewsResult>(`/stocks/${enc(symbol)}/news`, undefined, { signal }),
   levels: (symbol: string, range: ChartRange, signal?: Signal) =>
     apiGet<LevelsResponse>(`/stocks/${enc(symbol)}/levels`, { range }, { signal }),
 };

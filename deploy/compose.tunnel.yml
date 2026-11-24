@@ -1,0 +1,30 @@
+# Opt-in: a Cloudflare quick tunnel in front of Caddy (free, no account, no
+# domain; a random https://<words>.trycloudflare.com address that changes
+# every time the tunnel starts). See docs/deploy.md.
+#
+#   docker compose -f docker-compose.yml -f deploy/compose.tunnel.yml up -d --build
+#   docker compose -f docker-compose.yml -f deploy/compose.tunnel.yml logs tunnel   # the URL
+#
+# Paths are relative to the repository root (the first file's directory).
+
+services:
+  caddy:
+    volumes:
+      # Replaces deploy/Caddyfile: trust CF-Connecting-IP from the tunnel only.
+      - ./deploy/Caddyfile.tunnel:/etc/caddy/Caddyfile:ro
+
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.7
+    command: tunnel --no-autoupdate --url http://caddy:80
+    networks:
+      default:
+        # Named in deploy/Caddyfile.tunnel (trusted_proxies). Keep them equal.
+        ipv4_address: 172.28.86.20
+    depends_on:
+      - caddy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

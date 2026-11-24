@@ -31,6 +31,7 @@ type MarketService interface {
 	EarningsHistory(ctx context.Context, symbol market.Symbol) (market.EarningsHistoryResult, error)
 	Fundamentals(ctx context.Context, symbol market.Symbol) (market.FundamentalsResult, error)
 	Recommendations(ctx context.Context, symbol market.Symbol) (market.RecommendationsResult, error)
+	News(ctx context.Context, symbol market.Symbol) (market.NewsResult, error)
 }
 
 // Options configures the router.
@@ -89,6 +90,7 @@ func NewRouter(opts Options) http.Handler {
 	api.GET("/stocks/:symbol/earnings/history", h.earningsHistory)
 	api.GET("/stocks/:symbol/fundamentals", h.fundamentals)
 	api.GET("/stocks/:symbol/recommendations", h.recommendations)
+	api.GET("/stocks/:symbol/news", h.news)
 	return r
 }
 
@@ -282,6 +284,19 @@ func (h *handlers) recommendations(c *gin.Context) {
 		return
 	}
 	res, err := h.svc.Recommendations(c.Request.Context(), sym)
+	if err != nil {
+		fail(c, h.log, err)
+		return
+	}
+	ok(c, res)
+}
+
+func (h *handlers) news(c *gin.Context) {
+	sym, valid := h.symbolParam(c)
+	if !valid {
+		return
+	}
+	res, err := h.svc.News(c.Request.Context(), sym)
 	if err != nil {
 		fail(c, h.log, err)
 		return

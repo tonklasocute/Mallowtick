@@ -1,5 +1,5 @@
 import { Info, type LucideIcon } from "lucide-react";
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import type { ComponentPropsWithRef, ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 import { direction, formatMarketTime, formatSignedChange, formatSignedPercent } from "@/lib/format";
@@ -11,7 +11,8 @@ import type { Freshness } from "@/types/api";
  * Claude design canvas: 26px cards, pastel icon tiles, soft tiles and note boxes.
  */
 
-export function DetailCard({ className, ...props }: ComponentPropsWithoutRef<"section">) {
+/** The ref reaches the section (React 19 passes it as a prop), e.g. for useInView. */
+export function DetailCard({ className, ...props }: ComponentPropsWithRef<"section">) {
   return (
     <section
       className={cn(

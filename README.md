@@ -16,7 +16,8 @@ No sample or mock prices exist anywhere in the app. Without a provider key, it s
 ```text
 apps/web          Next.js 16 (App Router, TypeScript strict, Tailwind 4, TanStack Query, Lightweight Charts)
 services/api      Go 1.27 + Gin API: Twelve Data adapter, caching, support/resistance
-docs/             architecture.md · api.md · market-data.md · support-resistance.md · design-reference.png
+docs/             architecture.md · api.md · market-data.md · support-resistance.md · deploy.md · design-reference.png
+deploy/           Caddyfiles and the opt-in Cloudflare tunnel override for docker-compose.yml
 ```
 
 ## Requirements
@@ -41,6 +42,10 @@ make dev-web   # http://localhost:3000  (proxies /api/v1 to API_ORIGIN)
 ```
 
 To try it on an iPhone, the PWA needs HTTPS. For local testing, expose the web port through an HTTPS tunnel, open it in Safari, then use Share → Add to Home Screen. The service worker only registers in production builds (`pnpm --filter @mallowtick/web build && pnpm --filter @mallowtick/web start`).
+
+## Deploy
+
+`docker compose up -d --build` runs the API, the web app and Caddy (HTTPS) from `services/api/.env`. [docs/deploy.md](docs/deploy.md) puts it online for free: an always-free cloud VM with a DuckDNS hostname and automatic HTTPS, or briefly from your PC through a Cloudflare quick tunnel. The market-data plans' personal-use terms still apply.
 
 ## Checks
 
